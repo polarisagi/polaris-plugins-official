@@ -1,0 +1,13 @@
+{
+  "app_name": "Feishu",
+  "open_name": "Feishu",
+  "bundle_id": "com.bytedance.feishu",
+  "process_name": "Feishu",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": false },
+  "aliases": ["飞书", "lark", "feishu"],
+  "search_shortcut": "cmd+k",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": 0
+}

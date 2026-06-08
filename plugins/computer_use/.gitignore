@@ -1,0 +1,24 @@
+# Logs
+logs/
+*.log
+
+# Environment
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Compiled Swift OCR binary (built on first run)
+src/find_text_on_screen
+find_text_on_screen
+src/describe_screen
+describe_screen
+
+# Temporary screenshot files
+ocr_temp.png
+screenshot.png
+
+# Python virtualenv / uv
+.venv/
+__pycache__/
+*.pyc

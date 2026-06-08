@@ -1,0 +1,13 @@
+{
+  "app_name": "Telegram",
+  "open_name": "Telegram",
+  "bundle_id": "ru.keepcoder.Telegram",
+  "process_name": "Telegram",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": true },
+  "aliases": ["telegram"],
+  "search_shortcut": "cmd+f",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": 0
+}

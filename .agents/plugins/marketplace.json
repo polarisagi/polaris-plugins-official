@@ -1,0 +1,50 @@
+{
+  "name": "polaris-plugins-official",
+  "interface": {
+    "displayName": "Polaris Official Plugins"
+  },
+  "plugins": [
+    {
+      "name": "polaris-computer-use",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/polarisagi/polaris-plugins-official.git",
+        "path": "./plugins/computer_use",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "polaris-browser-use",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/polarisagi/polaris-plugins-official.git",
+        "path": "./plugins/browser_use",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "polaris-knowledge-base",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/polarisagi/polaris-plugins-official.git",
+        "path": "./plugins/knowledge_base",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

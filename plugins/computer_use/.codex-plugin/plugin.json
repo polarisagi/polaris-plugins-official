@@ -1,0 +1,32 @@
+{
+  "name": "polaris-computer-use",
+  "version": "1.0.0",
+  "description": "Universal desktop automation. Control any desktop application (GUI), operate various installed software including chat software, automate workflows, use keyboard/mouse, and capture screenshots natively via MCP.",
+  "author": {
+    "name": "mrlaoliai",
+    "email": "polarisagi.online@gmail.com",
+    "url": "https://polarisagi.online/"
+  },
+  "homepage": "https://polarisagi.online/",
+  "repository": "https://github.com/polarisagi/polaris-plugins-official",
+  "license": "AGPL-3.0",
+  "keywords": ["computer-use", "automation", "desktop-apps", "gui-control", "screenshot", "mcp"],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Computer Use",
+    "shortDescription": "Automate any desktop application, control mouse/keyboard, and capture screenshots.",
+    "longDescription": "Allows the AI agent to automate any desktop application via GUI control. It can launch and operate various software installed on the computer, including all kinds of chat software. It can interact with user interfaces, control the computer's mouse and keyboard, and capture screenshots using native OS automation APIs. Built in Python. Cross-platform: macOS, Windows, Linux.",
+    "developerName": "mrlaoliai",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://polarisagi.online/",
+    "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
+    "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Open the chat application and send a message to my team.",
+      "Take a screenshot of the current screen.",
+      "Click on the button at coordinates [100, 200]."
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "app_name": "DingTalk",
+  "open_name": "DingTalk",
+  "bundle_id": "com.alibaba.DingTalkMac",
+  "process_name": "DingTalk",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": false },
+  "aliases": ["钉钉", "dingtalk"],
+  "search_shortcut": "cmd+f",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": 0
+}

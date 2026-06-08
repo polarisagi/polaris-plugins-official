@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "polaris-knowledge-base": {
+      "command": "uv",
+      "args": ["run", "src/main.py"],
+      "env": {
+        "POLARIS_KB_ALLOWED_DIR": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "polaris-computer-use": {
+      "command": "uv",
+      "args": ["run", "src/main.py"],
+      "env": {
+        "VISION_CAPABLE": "true"
+      }
+    }
+  }
+}

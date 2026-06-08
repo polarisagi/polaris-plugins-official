@@ -1,0 +1,23 @@
+{
+  "app_name": "WeChat",
+  "open_name": "WeChat",
+  "bundle_id": "com.tencent.xinWeChat",
+  "process_name": "WeChat",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": false },
+  "aliases": ["微信", "wechat"],
+  "search_shortcut": "cmd+f",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": -1,
+  "search_result_section": {
+    "zh": "联系人",
+    "en": "Contacts"
+  },
+  "search_result_sections": {
+    "zh": ["联系人", "群聊"],
+    "en": ["Contacts", "Group Chats"]
+  },
+  "pre_search_reset": true,
+  "wait_before_ocr": 2.5
+}

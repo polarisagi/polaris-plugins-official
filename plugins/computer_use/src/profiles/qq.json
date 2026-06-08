@@ -1,0 +1,18 @@
+{
+  "app_name": "QQ",
+  "open_name": "QQ",
+  "bundle_id": "com.tencent.qq",
+  "process_name": "QQ",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": false },
+  "aliases": ["qq"],
+  "search_shortcut": "cmd+f",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": -1,
+  "search_result_section": {
+    "zh": "群聊",
+    "en": "Group Chats"
+  },
+  "pre_search_reset": true
+}

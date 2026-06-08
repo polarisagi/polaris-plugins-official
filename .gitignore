@@ -1,0 +1,11 @@
+target/
+__pycache__/
+*.pyc
+*.exe
+*.so
+*.dylib
+*.dll
+.DS_Store
+
+# Go binary
+plugins/knowledge_base/knowledge_base

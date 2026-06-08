@@ -1,0 +1,32 @@
+{
+  "name": "polaris-systeminfo-mcp",
+  "version": "1.0.0",
+  "description": "Provide system environment context (OS, architecture, locale, timezone, installed apps) via MCP.",
+  "author": {
+    "name": "mrlaoliai",
+    "email": "polarisagi.online@gmail.com",
+    "url": "https://polarisagi.online/"
+  },
+  "homepage": "https://polarisagi.online/",
+  "repository": "https://github.com/polarisagi/polaris-plugins-official",
+  "license": "AGPL-3.0",
+  "keywords": ["system-info", "context", "environment", "mcp"],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "System Info",
+    "shortDescription": "Fetch OS details, timezone, locale, and check installed apps.",
+    "longDescription": "Allows the AI agent to detect the underlying operating system type, version, architecture, locale, and timezone. It also provides a targeted tool to check if specific applications are installed without scanning the entire file system. Written in pure Python with zero external dependencies.",
+    "developerName": "mrlaoliai",
+    "category": "System",
+    "capabilities": ["Read"],
+    "websiteURL": "https://polarisagi.online/",
+    "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
+    "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
+    "defaultPrompt": [
+      "What operating system and architecture am I running on?",
+      "What is the system language and timezone?",
+      "Check if Google Chrome is installed on this computer."
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "polaris-systeminfo-mcp": {
+      "command": "uv",
+      "args": ["run", "src/main.py"]
+    }
+  }
+}

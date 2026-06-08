@@ -1,0 +1,13 @@
+{
+  "app_name": "Slack",
+  "open_name": "Slack",
+  "bundle_id": "com.tinyspeck.slackmacgap",
+  "process_name": "Slack",
+  "category": "chat",
+  "platform": { "darwin": true, "windows": true, "linux": true },
+  "aliases": ["slack"],
+  "search_shortcut": "cmd+k",
+  "send_shortcut": "enter",
+  "input_role_hint": "AXTextArea",
+  "result_match_index": 0
+}
