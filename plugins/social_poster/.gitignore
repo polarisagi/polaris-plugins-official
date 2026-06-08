@@ -1,0 +1,15 @@
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Python virtualenv / uv
+.venv/
+__pycache__/
+*.pyc

@@ -1,0 +1,10 @@
+[project]
+name = "social-poster"
+version = "0.1.0"
+description = "Polaris plugin for multi-platform social media auto-posting"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp>=1.27.2",
+    "playwright>=1.60.0",
+]

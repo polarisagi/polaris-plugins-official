@@ -9,7 +9,7 @@
 **Polaris Plugins Official** is the official extension library for [Polaris AI Agent](https://github.com/polarisagi/polaris), fully compatible with:
 
 - **Anthropic MCP** (Model Context Protocol) — stdio JSON-RPC 2.0, protocol version `2024-11-05`
-- **OpenAI Codex Plugin** (`.codex-plugin/plugin.json` + `.mcp.json`) — current standard
+- **OpenAI Codex Plugin** (`.polaris-plugin/plugin.json` + `.mcp.json`) — current standard
 
 > **Note**: The legacy `ai-plugin.json` format (ChatGPT Plugin Store) was deprecated in March 2024 and is not used here.
 
@@ -92,17 +92,17 @@ Polaris `pkg/extensions/marketplace/` auto-discovers and installs plugins from t
 ```
 plugins/
   computer_use/
-    .codex-plugin/plugin.json   # Codex plugin manifest
+    .polaris-plugin/plugin.json   # Codex plugin manifest
     .mcp.json                    # MCP server config (command: uv)
     src/main.py                  # Python MCP server
     pyproject.toml
   browser_use/
-    .codex-plugin/plugin.json
+    .polaris-plugin/plugin.json
     .mcp.json                    # MCP server config (command: uv)
     src/main.py
     pyproject.toml
   knowledge_base/
-    .codex-plugin/plugin.json
+    .polaris-plugin/plugin.json
     .mcp.json                    # MCP server config (command: uv)
     src/main.py                  # Python MCP server
     pyproject.toml

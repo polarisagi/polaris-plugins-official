@@ -1,0 +1,31 @@
+{
+  "name": "polaris-social-poster",
+  "version": "1.0.0",
+  "description": "Multi-platform social media auto-posting plugin. Automatically format and publish content to Twitter, Weibo, Xiaohongshu, Douyin, and WeChat Official Accounts using browser automation.",
+  "author": {
+    "name": "mrlaoliai",
+    "email": "polarisagi.online@gmail.com",
+    "url": "https://polarisagi.online/"
+  },
+  "homepage": "https://polarisagi.online/",
+  "repository": "https://github.com/polarisagi/polaris-plugins-official",
+  "license": "AGPL-3.0",
+  "keywords": ["social-media", "auto-post", "twitter", "weibo", "xiaohongshu", "douyin", "wechat", "mcp"],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Social Poster",
+    "shortDescription": "Automate publishing content to major social media platforms.",
+    "longDescription": "Allows the AI agent to format and publish text and images to Twitter, Weibo, Xiaohongshu, Douyin, and WeChat Official Accounts. Leverages browser automation to securely post content without relying on restricted APIs. Capable of automatically chunking long content and adapting styles for different platforms.",
+    "developerName": "mrlaoliai",
+    "category": "Social",
+    "capabilities": ["Write"],
+    "websiteURL": "https://polarisagi.online/",
+    "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
+    "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Post this update with the image to Twitter and Weibo.",
+      "Format this article and publish it to my Xiaohongshu account."
+    ]
+  }
+}
