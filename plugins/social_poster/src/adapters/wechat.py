@@ -64,6 +64,20 @@ class WechatAdapter(BaseAdapter):
         else:
             raise Exception("Comment ID not found.")
 
+    async def delete_comment(self, post_url: str, comment_id: str):
+        print(f"WeChat: Deleting comment {comment_id}...")
+        await self.page.goto('https://mp.weixin.qq.com/misc/appmsgcomment', wait_until='domcontentloaded')
+        await asyncio.sleep(3)
+        comments_elements = await self.page.locator('.weui-desktop-table__row').all()
+        idx = int(comment_id)
+        if idx < len(comments_elements):
+            await comments_elements[idx].locator('a:has-text("删除")').first.click()
+            await asyncio.sleep(1)
+            await self.page.locator('button:has-text("确定")').first.click()
+            await asyncio.sleep(2)
+        else:
+            raise Exception("Comment ID not found.")
+
     async def search_posts(self, query: str) -> list[dict]:
         print(f"WeChat: Searching for {query} via Sogou...")
         await self.page.goto(f"https://weixin.sogou.com/weixin?type=2&query={query}", wait_until='domcontentloaded')

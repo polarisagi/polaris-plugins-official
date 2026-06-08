@@ -49,6 +49,11 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
+    async def delete_comment(self, post_identifier: str, comment_id: str):
+        """Delete or hide a specific comment by ID."""
+        pass
+
+    @abstractmethod
     async def search_posts(self, query: str) -> list[dict]:
         pass
 

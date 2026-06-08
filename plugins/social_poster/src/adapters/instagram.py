@@ -76,6 +76,25 @@ class InstagramAdapter(BaseAdapter):
         else:
             raise Exception("Comment ID not found.")
 
+    async def delete_comment(self, post_url: str, comment_id: str):
+        print(f"Instagram: Deleting comment {comment_id} on {post_url}...")
+        await self.page.goto(post_url, wait_until='domcontentloaded')
+        await asyncio.sleep(3)
+        comments_elements = await self.page.locator('ul > li').all()
+        idx = int(comment_id)
+        if idx < len(comments_elements):
+            await comments_elements[idx].hover()
+            await asyncio.sleep(1)
+            # Instagram comment delete is under a 3-dot menu or a delete icon
+            dots_btn = comments_elements[idx].locator('svg[aria-label="More options"]').first
+            if await dots_btn.count() > 0:
+                await dots_btn.click()
+                await asyncio.sleep(1)
+                await self.page.locator('button:has-text("Delete")').first.click()
+                await asyncio.sleep(2)
+        else:
+            raise Exception("Comment ID not found.")
+
     async def search_posts(self, query: str) -> list[dict]:
         print(f"Instagram: Searching for {query} via explore tags...")
         await self.page.goto(f"https://www.instagram.com/explore/tags/{query}/", wait_until='domcontentloaded')

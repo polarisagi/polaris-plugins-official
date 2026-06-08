@@ -1,31 +1,41 @@
+import re
+
+def smart_truncate(text: str, max_length: int) -> str:
+    if len(text) <= max_length:
+        return text
+        
+    # Prevent breaking URLs
+    urls = [m.span() for m in re.finditer(r'https?://\S+', text)]
+    # Prevent breaking hashtags
+    hashtags = [m.span() for m in re.finditer(r'#\S+', text)]
+    
+    protected_ranges = urls + hashtags
+    
+    cut_idx = max_length - 3
+    
+    # Check if cut_idx falls inside a protected range
+    for start, end in protected_ranges:
+        if start < cut_idx < end:
+            cut_idx = start # Retreat to the start of the protected element
+            break
+            
+    return text[:cut_idx].strip() + "..."
+
 async def format_content_for_platform(platform: str, content: str) -> str:
     """
-    Simulates calling an LLM or format rules to adjust content for specific platforms.
-    In a full production version, this would invoke the agent's LLM capability.
+    Format content based on platform specifications, including smart truncation.
     """
-    # For now, implementing basic length limits and rules.
     if platform == "twitter":
-        # Truncate or chunk for Twitter (280 chars)
-        if len(content) > 280:
-            return content[:277] + "..."
-        return content
+        return smart_truncate(content, 280)
     elif platform == "weibo":
-        # Weibo max 2000, usually <140 is preferred
-        return content
+        # Weibo technically supports 2000, but 140 is visually optimal. We truncate at 2000 just in case.
+        return smart_truncate(content, 2000)
     elif platform == "xiaohongshu":
-        # Add typical emojis or hashtags for Xiaohongshu
-        return content + "\n\n#日常生活 #好物分享"
+        return content # Xiaohongshu supports 1000, usually fine
     elif platform == "douyin":
-        # Short description for video/images
-        return content[:100] + " #推荐"
-    elif platform == "wechat":
-        # Can be long form
-        return content
+        # Douyin descriptions should be concise
+        return smart_truncate(content, 150)
     elif platform == "instagram":
-        # Requires images, short caption with hashtags
-        return content + "\n\n#trending"
-    elif platform == "facebook":
-        # Standard post
-        return content
+        return smart_truncate(content, 2200)
     
     return content

@@ -63,6 +63,22 @@ class DouyinAdapter(BaseAdapter):
         else:
             raise Exception("Comment ID not found.")
 
+    async def delete_comment(self, post_url: str, comment_id: str):
+        print(f"Douyin: Deleting comment {comment_id} on {post_url}...")
+        await self.page.goto(post_url, wait_until='domcontentloaded')
+        await asyncio.sleep(3)
+        comments_elements = await self.page.locator('div[data-e2e="comment-item"]').all()
+        idx = int(comment_id)
+        if idx < len(comments_elements):
+            await comments_elements[idx].hover()
+            await asyncio.sleep(1)
+            await comments_elements[idx].locator('span:has-text("删除")').first.click()
+            await asyncio.sleep(1)
+            await self.page.locator('button:has-text("确定")').first.click()
+            await asyncio.sleep(2)
+        else:
+            raise Exception("Comment ID not found.")
+
     async def search_posts(self, query: str) -> list[dict]:
         print(f"Douyin: Searching for {query}...")
         await self.page.goto(f"https://www.douyin.com/search/{query}", wait_until='domcontentloaded')

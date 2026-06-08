@@ -71,6 +71,26 @@ class FacebookAdapter(BaseAdapter):
         else:
             raise Exception("Comment ID not found.")
 
+    async def delete_comment(self, post_url: str, comment_id: str):
+        print(f"Facebook: Deleting comment {comment_id} on {post_url}...")
+        await self.page.goto(post_url, wait_until='domcontentloaded')
+        await asyncio.sleep(3)
+        comments_elements = await self.page.locator('div[aria-label*="Comment by"]').all()
+        idx = int(comment_id)
+        if idx < len(comments_elements):
+            await comments_elements[idx].hover()
+            await asyncio.sleep(1)
+            dots = comments_elements[idx].locator('div[aria-label*="More"]').first
+            if await dots.count() > 0:
+                await dots.click()
+                await asyncio.sleep(1)
+                await self.page.locator('span:has-text("Delete")').first.click()
+                await asyncio.sleep(1)
+                await self.page.locator('div[aria-label="Delete"]').first.click()
+                await asyncio.sleep(2)
+        else:
+            raise Exception("Comment ID not found.")
+
     async def search_posts(self, query: str) -> list[dict]:
         print(f"Facebook: Searching for {query}...")
         await self.page.goto(f"https://www.facebook.com/search/posts/?q={query}", wait_until='domcontentloaded')
