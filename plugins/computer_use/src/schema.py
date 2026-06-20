@@ -18,11 +18,24 @@ TOOL_SCHEMA = {
             "action": {
                 "type": "string",
                 "enum": [
-                    "screenshot", "get_screen_state", "click_element_by_id", "get_running_apps",
-                    "left_click", "right_click", "double_click", "left_click_drag",
-                    "mouse_move", "scroll", "type", "key",
-                    "open_app", "get_ui_tree", "click_element_by_name",
-                    "focus_input", "clear_and_type", "send_message_to",
+                    "screenshot",
+                    "get_screen_state",
+                    "click_element_by_id",
+                    "get_running_apps",
+                    "left_click",
+                    "right_click",
+                    "double_click",
+                    "left_click_drag",
+                    "mouse_move",
+                    "scroll",
+                    "type",
+                    "key",
+                    "open_app",
+                    "get_ui_tree",
+                    "click_element_by_name",
+                    "focus_input",
+                    "clear_and_type",
+                    "send_message_to",
                 ],
                 "description": (
                     "Action:\n"
@@ -40,25 +53,63 @@ TOOL_SCHEMA = {
                     "• send_message_to — Macro: open chat, find contact, send message."
                 ),
             },
-            "coordinate": {"type": "array", "items": {"type": "number"},
-                           "description": "[x, y] screen coordinates for mouse actions. For drag, these are the destination coordinates."},
-            "amount":      {"type": "number", "description": "Scroll amount (positive to scroll up, negative to scroll down)."},
-            "text":        {"type": "string", "description": "Text to type or key shortcut string."},
-            "app_name":    {"type": "string", "description": "Application name. Filters screenshot/get_screen_state to only this app's window, or specifies target for open_app."},
-            "id":          {"type": "integer", "description": "Element ID for click_element_by_id."},
-            "element_name":{"type": "string", "description": "Name substring of element to click."},
-            "index":       {"type": "integer", "description": "Match index: 0=first, -1=last."},
-            "hint":        {"type": "string", "description": "Accessibility role hint for focus_input."},
-            "contact_name":{"type": "string", "description": "[send_message_to] Contact or group chat name."},
-            "message":     {"type": "string", "description": "[send_message_to] Message to send."},
-            "app":         {"type": "string",
-                            "description": (
-                                "[send_message_to] Target app alias from src/profiles/. "
-                                "Examples: 'wechat', 'slack', 'lark', 'dingtalk', 'telegram'. "
-                                "If omitted, defaults to the first available chat profile."
-                            )},
-            "wait_search": {"type": "number", "description": "[send_message_to] Wait for search results (default 1.5s)."},
-            "wait_chat":   {"type": "number", "description": "[send_message_to] Wait for chat to open (default 0.8s)."},
+            "coordinate": {
+                "type": "array",
+                "items": {"type": "number"},
+                "description": "[x, y] screen coordinates for mouse actions. For drag, these are the destination coordinates.",
+            },
+            "amount": {
+                "type": "number",
+                "description": "Scroll amount (positive to scroll up, negative to scroll down).",
+            },
+            "text": {
+                "type": "string",
+                "description": "Text to type or key shortcut string.",
+            },
+            "app_name": {
+                "type": "string",
+                "description": "Application name. Filters screenshot/get_screen_state to only this app's window, or specifies target for open_app.",
+            },
+            "id": {
+                "type": "integer",
+                "description": "Element ID for click_element_by_id.",
+            },
+            "element_name": {
+                "type": "string",
+                "description": "Name substring of element to click.",
+            },
+            "index": {
+                "type": "integer",
+                "description": "Match index: 0=first, -1=last.",
+            },
+            "hint": {
+                "type": "string",
+                "description": "Accessibility role hint for focus_input.",
+            },
+            "contact_name": {
+                "type": "string",
+                "description": "[send_message_to] Contact or group chat name.",
+            },
+            "message": {
+                "type": "string",
+                "description": "[send_message_to] Message to send.",
+            },
+            "app": {
+                "type": "string",
+                "description": (
+                    "[send_message_to] Target app alias from src/profiles/. "
+                    "Examples: 'wechat', 'slack', 'lark', 'dingtalk', 'telegram'. "
+                    "If omitted, defaults to the first available chat profile."
+                ),
+            },
+            "wait_search": {
+                "type": "number",
+                "description": "[send_message_to] Wait for search results (default 1.5s).",
+            },
+            "wait_chat": {
+                "type": "number",
+                "description": "[send_message_to] Wait for chat to open (default 0.8s).",
+            },
         },
         "required": ["action"],
     },

@@ -29,13 +29,12 @@ Selection strategy (in order):
   B  Accessibility tree across all windows at depth 15, per section
   C  Keyboard Down+Enter on inline suggestions (safe last resort)
 """
+
 import json
 import os
 import subprocess
 import time
-import platform
 
-from pynput.mouse import Button
 
 from adapters.base import BaseAdapter
 import utils
@@ -50,9 +49,9 @@ _WECHAT_SECTIONS = {
 
 # Absolute path to the Swift OCR binary (compiled on first use).
 # __file__ is  src/adapters/chat/wechat.py → go up two levels to reach src/
-_SRC_DIR  = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_OCR_SRC  = os.path.join(_SRC_DIR, "find_text_on_screen.swift")
-_OCR_BIN  = os.path.join(_SRC_DIR, "find_text_on_screen")
+_SRC_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_OCR_SRC = os.path.join(_SRC_DIR, "find_text_on_screen.swift")
+_OCR_BIN = os.path.join(_SRC_DIR, "find_text_on_screen")
 
 
 def _ensure_ocr_binary() -> bool:
@@ -64,7 +63,9 @@ def _ensure_ocr_binary() -> bool:
     try:
         subprocess.run(
             ["swiftc", _OCR_SRC, "-o", _OCR_BIN],
-            check=True, capture_output=True, timeout=60,
+            check=True,
+            capture_output=True,
+            timeout=60,
         )
         return True
     except Exception:
@@ -77,9 +78,11 @@ def _ocr_find(screenshot_path: str, text: str) -> list:
     Returns a list of (x, y) tuples in logical screen coordinates, sorted top-to-bottom.
     """
     try:
-        out = subprocess.check_output(
-            [_OCR_BIN, screenshot_path, text], timeout=12
-        ).decode().strip()
+        out = (
+            subprocess.check_output([_OCR_BIN, screenshot_path, text], timeout=12)
+            .decode()
+            .strip()
+        )
     except Exception:
         return []
     results = []
@@ -94,7 +97,6 @@ def _ocr_find(screenshot_path: str, text: str) -> list:
 
 
 class WeChatAdapter(BaseAdapter):
-
     def press_search_shortcut(self, proc_name: str, plat: str, search_sc: str):
         if plat == "Darwin":
             utils.osa_send_key(proc_name, search_sc)
@@ -123,7 +125,9 @@ class WeChatAdapter(BaseAdapter):
         log,
     ) -> bool:
         if plat != "Darwin":
-            return super().select_search_result(contact_name, section, profile, proc_name, plat, log)
+            return super().select_search_result(
+                contact_name, section, profile, proc_name, plat, log
+            )
 
         # WeChat renders search in two phases: Phase 1 shows inline 群聊 suggestions
         # within ~1 s; Phase 2 shows the full results panel (with section headers such
@@ -144,15 +148,17 @@ class WeChatAdapter(BaseAdapter):
         else:
             sections = default_sections
 
-        open_name  = profile.get("open_name",  profile.get("app_name", proc_name))
-        bundle_id  = profile.get("bundle_id", "")
+        open_name = profile.get("open_name", profile.get("app_name", proc_name))
+        bundle_id = profile.get("bundle_id", "")
 
         # ── Strategy A: Screenshot + OCR (tries all sections, then no-section) ──
         if _ensure_ocr_binary():
             coords = self._find_via_ocr(contact_name, sections, proc_name, profile, log)
             if coords:
                 log("[4A] OCR identified target, retyping search to restore UI state")
-                self._retype_search(contact_name, profile, proc_name, open_name, bundle_id, log)
+                self._retype_search(
+                    contact_name, profile, proc_name, open_name, bundle_id, log
+                )
                 _direct_click(coords[0], coords[1])
                 log(f"[4A] WeChat OCR: direct-clicked at {coords}")
                 return True
@@ -165,7 +171,9 @@ class WeChatAdapter(BaseAdapter):
             if utils.safe_click(coords[0], coords[1], proc_name, open_name, bundle_id):
                 log(f"[4B] WeChat accessibility: clicked at {coords}")
                 return True
-            log("[4B] WeChat accessibility: safe_click failed (focus lost), falling through")
+            log(
+                "[4B] WeChat accessibility: safe_click failed (focus lost), falling through"
+            )
         else:
             log("[4B] WeChat accessibility: not found in any section")
 
@@ -244,8 +252,8 @@ class WeChatAdapter(BaseAdapter):
           OCR coordinates are window-relative; we add the stored (x, y) offset to
           convert to absolute screen coordinates before returning.
         """
-        bounds = profile.get("_window_bounds")
-        log(f"[4A] mss 屏幕区域截图中...")
+        profile.get("_window_bounds")
+        log("[4A] mss 屏幕区域截图中...")
         tmp, x_off, y_off = _screenshot_window(profile)
         try:
             if not tmp or not os.path.exists(tmp):
@@ -269,13 +277,17 @@ class WeChatAdapter(BaseAdapter):
                     if hy > sec_y:
                         abs_x = int(hx) + x_off
                         abs_y = int(hy) + y_off
-                        log(f"[4A] OCR: '{contact_name}' below '{section}' → screen({abs_x},{abs_y})")
+                        log(
+                            f"[4A] OCR: '{contact_name}' below '{section}' → screen({abs_x},{abs_y})"
+                        )
                         return (abs_x, abs_y)
 
                 # Section found but contact not visible — estimate one row below header
                 est_x = int(sec_x) + x_off
                 est_y = int(sec_y) + y_off + 45
-                log(f"[4A] OCR: estimating row below '{section}' → screen({est_x},{est_y})")
+                log(
+                    f"[4A] OCR: estimating row below '{section}' → screen({est_x},{est_y})"
+                )
                 return (est_x, est_y)
 
             # ── no section header — search for contact name anywhere in window ──
@@ -284,7 +296,9 @@ class WeChatAdapter(BaseAdapter):
                 hx, hy = contact_hits[0]
                 abs_x = int(hx) + x_off
                 abs_y = int(hy) + y_off
-                log(f"[4A] OCR: '{contact_name}' (no section) → screen({abs_x},{abs_y})")
+                log(
+                    f"[4A] OCR: '{contact_name}' (no section) → screen({abs_x},{abs_y})"
+                )
                 return (abs_x, abs_y)
 
             log(f"[4A] OCR: '{contact_name}' not found in window screenshot")
@@ -304,7 +318,7 @@ class WeChatAdapter(BaseAdapter):
         single JXA call, trying each section header in order.
         The search-results dropdown is often a separate window (not windows()[0]).
         """
-        js_contact  = json.dumps(contact)
+        js_contact = json.dumps(contact)
         js_sections = json.dumps(sections)
         jxa = f"""
         function run() {{
@@ -348,9 +362,13 @@ class WeChatAdapter(BaseAdapter):
         }}
         """
         try:
-            out = subprocess.check_output(
-                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=15
-            ).decode().strip()
+            out = (
+                subprocess.check_output(
+                    ["osascript", "-l", "JavaScript", "-e", jxa], timeout=15
+                )
+                .decode()
+                .strip()
+            )
             if out and out != "null" and "," in out:
                 return tuple(map(int, out.split(",")))
         except Exception:
@@ -361,6 +379,7 @@ class WeChatAdapter(BaseAdapter):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _screenshot_window(profile: dict) -> tuple:
     """
@@ -381,10 +400,10 @@ def _screenshot_window(profile: dict) -> tuple:
       (2.0 on Retina), returning logical coords within the window.
       Adding the stored window (x, y) offset converts them to absolute screen coords.
     """
-    wid    = profile.get("_window_id")
+    profile.get("_window_id")
     bounds = profile.get("_window_bounds", {})
-    x_off  = int(bounds.get("x", 0))
-    y_off  = int(bounds.get("y", 0))
+    int(bounds.get("x", 0))
+    int(bounds.get("y", 0))
 
     # Use mss to capture the screen region.
     # We DO NOT use screencapture -l <id> because on macOS, WeChat renders
@@ -392,6 +411,7 @@ def _screenshot_window(profile: dict) -> tuple:
     # excludes the dropdown entirely.
     # Fallback: mss window crop using stored bounds
     import utils
+
     return utils.capture_screen(bounds=bounds)
 
 
@@ -406,6 +426,7 @@ def _direct_click(x: int, y: int) -> None:
     spawning and keeps the current focus owner unchanged.
     """
     from pynput.mouse import Controller as _MC, Button as _Btn
+
     m = _MC()
     m.position = (x, y)
     time.sleep(0.05)
@@ -416,5 +437,7 @@ def _within(x: float, y: float, bounds: dict | None) -> bool:
     """True if (x, y) is inside the window bounds dict, or if bounds is empty."""
     if not bounds:
         return True
-    return (bounds["x"] <= x <= bounds["x"] + bounds["w"] and
-            bounds["y"] <= y <= bounds["y"] + bounds["h"])
+    return (
+        bounds["x"] <= x <= bounds["x"] + bounds["w"]
+        and bounds["y"] <= y <= bounds["y"] + bounds["h"]
+    )

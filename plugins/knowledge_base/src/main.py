@@ -3,6 +3,7 @@
 Polaris Knowledge Base MCP Server
 Provides safe access to local files for RAG purposes, with path sandboxing.
 """
+
 import sys
 import json
 import os
@@ -11,14 +12,15 @@ import pathlib
 
 ALLOWED_DIR = os.environ.get("POLARIS_KB_ALLOWED_DIR")
 
+
 def is_path_allowed(target_path: str) -> bool:
     if not ALLOWED_DIR:
         return True
-    
+
     try:
         abs_target = pathlib.Path(target_path).resolve()
         abs_root = pathlib.Path(ALLOWED_DIR).resolve()
-        
+
         # Check if abs_target is relative to abs_root
         return abs_root in abs_target.parents or abs_target == abs_root
     except Exception:
@@ -29,10 +31,12 @@ def handle_list_files(args):
     target_path = args.get("path")
     if not isinstance(target_path, str):
         raise ValueError("path is required and must be a string")
-        
+
     if not is_path_allowed(target_path):
-        raise PermissionError("path is outside the allowed directory (POLARIS_KB_ALLOWED_DIR)")
-        
+        raise PermissionError(
+            "path is outside the allowed directory (POLARIS_KB_ALLOWED_DIR)"
+        )
+
     try:
         entries = os.listdir(target_path)
         file_names = []
@@ -42,7 +46,7 @@ def handle_list_files(args):
                 file_names.append(f"{entry}/")
             else:
                 file_names.append(entry)
-                
+
         result = f"Files in {target_path}:\n" + "\n".join(file_names)
         return [{"type": "text", "text": result}]
     except Exception as e:
@@ -53,16 +57,23 @@ def handle_read_content(args):
     target_path = args.get("path")
     if not isinstance(target_path, str):
         raise ValueError("path is required and must be a string")
-        
+
     if not is_path_allowed(target_path):
-        raise PermissionError("path is outside the allowed directory (POLARIS_KB_ALLOWED_DIR)")
-        
+        raise PermissionError(
+            "path is outside the allowed directory (POLARIS_KB_ALLOWED_DIR)"
+        )
+
     try:
         with open(target_path, "r", encoding="utf-8") as f:
             data = f.read()
         return [{"type": "text", "text": data}]
     except UnicodeDecodeError:
-        return [{"type": "text", "text": "failed to read file: File is binary or not UTF-8 encoded."}]
+        return [
+            {
+                "type": "text",
+                "text": "failed to read file: File is binary or not UTF-8 encoded.",
+            }
+        ]
     except Exception as e:
         return [{"type": "text", "text": f"failed to read file: {str(e)}"}]
 
@@ -80,11 +91,11 @@ TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The absolute path to the directory"
+                    "description": "The absolute path to the directory",
                 }
             },
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     {
         "name": "read_content",
@@ -94,12 +105,12 @@ TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The absolute path to the file"
+                    "description": "The absolute path to the file",
                 }
             },
-            "required": ["path"]
-        }
-    }
+            "required": ["path"],
+        },
+    },
 ]
 
 
@@ -119,11 +130,17 @@ def main():
 
         try:
             if method == "initialize":
-                _send_result(req_id, {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "polaris-knowledge-base-mcp", "version": "1.0.0"},
-                })
+                _send_result(
+                    req_id,
+                    {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {
+                            "name": "polaris-knowledge-base-mcp",
+                            "version": "1.0.0",
+                        },
+                    },
+                )
             elif method == "ping":
                 _send_result(req_id, {})
             elif method == "tools/list":
@@ -132,7 +149,7 @@ def main():
                 params = req.get("params", {})
                 tool_name = params.get("name")
                 args = params.get("arguments", {})
-                
+
                 if tool_name == "list_files":
                     result = handle_list_files(args)
                     _send_result(req_id, {"content": result})
@@ -151,14 +168,25 @@ def main():
 def _send_result(req_id, result):
     if req_id is None:
         return
-    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": req_id, "result": result}) + "\n")
+    sys.stdout.write(
+        json.dumps({"jsonrpc": "2.0", "id": req_id, "result": result}) + "\n"
+    )
     sys.stdout.flush()
 
 
 def _send_error(req_id, code, message):
     if req_id is None:
         return
-    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}) + "\n")
+    sys.stdout.write(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": code, "message": message},
+            }
+        )
+        + "\n"
+    )
     sys.stdout.flush()
 
 

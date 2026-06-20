@@ -1,6 +1,4 @@
-import asyncio
 import os
-import json
 import sys
 from typing import Optional
 from pathlib import Path
@@ -15,14 +13,16 @@ _browser: Optional[Browser] = None
 _context: Optional[BrowserContext] = None
 _page: Optional[Page] = None
 
+
 async def _on_page(page: Page):
     global _page
     print("New tab opened, switching to it.", file=sys.stderr)
     _page = page
 
+
 async def _ensure_page() -> Page:
     global _playwright, _browser, _context, _page
-    
+
     if _page is not None and not _page.is_closed():
         return _page
 
@@ -32,24 +32,26 @@ async def _ensure_page() -> Page:
     try:
         # Try dynamic debugging ports
         home = Path.home()
-        local_app_data = os.environ.get('LOCALAPPDATA', str(home / 'AppData' / 'Local'))
-        
+        local_app_data = os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local"))
+
         port_files = [
-            home / 'Library/Application Support/Google/Chrome/DevToolsActivePort',
-            home / 'Library/Application Support/Microsoft Edge/DevToolsActivePort',
-            Path(local_app_data) / 'Google/Chrome/User Data/DevToolsActivePort',
-            Path(local_app_data) / 'Microsoft/Edge/User Data/DevToolsActivePort',
+            home / "Library/Application Support/Google/Chrome/DevToolsActivePort",
+            home / "Library/Application Support/Microsoft Edge/DevToolsActivePort",
+            Path(local_app_data) / "Google/Chrome/User Data/DevToolsActivePort",
+            Path(local_app_data) / "Microsoft/Edge/User Data/DevToolsActivePort",
         ]
 
         endpoint_url = None
         for port_file in port_files:
             if port_file.exists():
                 try:
-                    content = port_file.read_text('utf-8').splitlines()
+                    content = port_file.read_text("utf-8").splitlines()
                     if content:
                         port = int(content[0].strip())
                         endpoint_url = f"http://127.0.0.1:{port}"
-                        if len(content) > 1 and content[1].strip().startswith('/devtools/'):
+                        if len(content) > 1 and content[1].strip().startswith(
+                            "/devtools/"
+                        ):
                             endpoint_url = f"ws://127.0.0.1:{port}{content[1].strip()}"
                         break
                 except Exception:
@@ -61,16 +63,19 @@ async def _ensure_page() -> Page:
             _context = contexts[0] if contexts else await _browser.new_context()
         else:
             raise Exception("No active DevTools port found.")
-            
+
     except Exception as e:
-        print(f"Failed to connect via CDP, launching a new browser instance... {e}", file=sys.stderr)
+        print(
+            f"Failed to connect via CDP, launching a new browser instance... {e}",
+            file=sys.stderr,
+        )
         _browser = await _playwright.chromium.launch(headless=False)
         contexts = _browser.contexts
         _context = contexts[0] if contexts else await _browser.new_context()
 
     _context.on("page", _on_page)
     _page = await _context.new_page()
-    
+
     return _page
 
 
@@ -85,11 +90,12 @@ async def navigate(url: str) -> str:
         pass
     return f"Navigated to {url}"
 
+
 @mcp.tool()
 async def get_interactive_dom() -> str:
     """Get a simplified interactive DOM tree. Returns ONLY interactive elements (links, buttons, inputs) with a unique 'polaris-id'. Use this ONLY when you need to find an element to click or fill. To read the main text content of the page, use get_page_content instead."""
     page = await _ensure_page()
-    
+
     js_code = """
     () => {
         let counter = 1;
@@ -152,12 +158,15 @@ async def get_interactive_dom() -> str:
         for e in dom_tree:
             role_str = f' role="{e["role"]}"' if e.get("role") else ""
             vp_str = "" if e.get("inViewport") else " (Out of Viewport)"
-            formatted.append(f'[ID: {e["id"]}] <{e["tag"]}{role_str}> {e["text"]} {vp_str}'.strip())
-            
+            formatted.append(
+                f"[ID: {e['id']}] <{e['tag']}{role_str}> {e['text']} {vp_str}".strip()
+            )
+
         res = "\\n".join(formatted)
         return res if res else "No interactive elements found."
     except Exception as e:
         return f"Error extracting DOM: {e}"
+
 
 @mcp.tool()
 async def action_by_id(id: int, action: str, text: str = "") -> str:
@@ -170,7 +179,7 @@ async def action_by_id(id: int, action: str, text: str = "") -> str:
     page = await _ensure_page()
     try:
         locator = page.locator(f'[polaris-id="{id}"]').first
-        
+
         try:
             await locator.scroll_into_view_if_needed(timeout=2000)
         except Exception:
@@ -187,16 +196,17 @@ async def action_by_id(id: int, action: str, text: str = "") -> str:
             await locator.hover(force=True)
         else:
             return f"Unknown action: {action}"
-            
+
         try:
             await page.wait_for_load_state("networkidle", timeout=2000)
         except Exception:
             pass
-            
+
         await page.wait_for_timeout(500)
         return f"Action {action} performed successfully on element ID {id}."
     except Exception as e:
         return f"Error: {e}"
+
 
 @mcp.tool()
 async def scroll_page(direction: str) -> str:
@@ -213,6 +223,7 @@ async def scroll_page(direction: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
+
 @mcp.tool()
 async def go_back() -> str:
     """Go back to the previous page in the browser history."""
@@ -226,6 +237,7 @@ async def go_back() -> str:
         return "Navigated back."
     except Exception as e:
         return f"Error: {e}"
+
 
 @mcp.tool()
 async def close_tab() -> str:
@@ -246,6 +258,7 @@ async def close_tab() -> str:
     except Exception as e:
         return f"Error: {e}"
 
+
 @mcp.tool()
 async def get_page_content() -> str:
     """Get the visible text content of the current page. Use this to read articles, search results, or extract information."""
@@ -255,6 +268,7 @@ async def get_page_content() -> str:
         return text[:40000]
     except Exception as e:
         return f"Error: {e}"
+
 
 @mcp.tool()
 async def get_current_state() -> str:

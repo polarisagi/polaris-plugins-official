@@ -7,12 +7,13 @@ To add a new app-specific adapter:
 
 Apps NOT listed here automatically use BaseAdapter (generic behaviour).
 """
+
 from adapters.base import BaseAdapter
 from adapters.chat.wechat import WeChatAdapter
 
 _REGISTRY: dict[str, type[BaseAdapter]] = {
     "com.tencent.xinWeChat": WeChatAdapter,
-    "com.tencent.qq":        WeChatAdapter,  # QQ has the same dropdown architecture
+    "com.tencent.qq": WeChatAdapter,  # QQ has the same dropdown architecture
 }
 
 

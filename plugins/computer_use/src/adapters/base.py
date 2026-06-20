@@ -7,7 +7,7 @@ main window's accessibility tree (Slack, Feishu, DingTalk, Telegram, etc.).
 Override select_search_result() in an app-specific subclass when the app's
 UI behaviour differs (e.g. separate NSWindow dropdown, deeper hierarchy).
 """
-import platform
+
 import time
 
 from pynput.mouse import Button
@@ -16,7 +16,6 @@ import utils
 
 
 class BaseAdapter:
-
     def select_search_result(
         self,
         contact_name: str,

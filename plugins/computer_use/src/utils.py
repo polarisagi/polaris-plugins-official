@@ -2,28 +2,34 @@
 跨平台工具类库，供 main.py 和各适配器（adapters）共享使用。
 包含所有键盘、鼠标、剪贴板和系统辅助功能（置顶、截图等）的底层辅助方法。
 """
+
 import json
 import locale as _locale_mod
 import platform
 import subprocess
 import time
+from typing import Optional
 
 from pynput.keyboard import Controller as KeyboardController, Key
 from pynput.mouse import Controller as MouseController, Button
 
-mouse    = MouseController()
+mouse = MouseController()
 keyboard = KeyboardController()
 
 # ---------------------------------------------------------------------------
 # 语言环境检测 (Locale detection)
 # ---------------------------------------------------------------------------
 
+
 def detect_locale() -> str:
     """如果系统语言是中文，则返回 'zh'，否则返回 'en'。"""
     if platform.system() == "Darwin":
         try:
             import subprocess
-            out = subprocess.check_output(["defaults", "read", "-g", "AppleLanguages"], timeout=2).decode()
+
+            out = subprocess.check_output(
+                ["defaults", "read", "-g", "AppleLanguages"], timeout=2
+            ).decode()
             if "zh" in out.lower():
                 return "zh"
         except Exception:
@@ -40,43 +46,88 @@ def detect_locale() -> str:
 # ---------------------------------------------------------------------------
 
 _PYNPUT_KEY_MAP = {
-    "enter": Key.enter, "return": Key.enter,
-    "esc": Key.esc, "escape": Key.esc,
-    "tab": Key.tab, "space": Key.space,
-    "backspace": Key.backspace, "delete": Key.delete, "del": Key.delete,
-    "up": Key.up, "down": Key.down, "left": Key.left, "right": Key.right,
-    "home": Key.home, "end": Key.end,
-    "pageup": Key.page_up, "pagedown": Key.page_down,
-    "ctrl": Key.ctrl, "alt": Key.alt, "shift": Key.shift,
-    "cmd": Key.cmd, "win": Key.cmd, "super": Key.cmd,
-    "f1": Key.f1, "f2": Key.f2, "f3": Key.f3, "f4": Key.f4,
-    "f5": Key.f5, "f6": Key.f6, "f7": Key.f7, "f8": Key.f8,
-    "f9": Key.f9, "f10": Key.f10, "f11": Key.f11, "f12": Key.f12,
+    "enter": Key.enter,
+    "return": Key.enter,
+    "esc": Key.esc,
+    "escape": Key.esc,
+    "tab": Key.tab,
+    "space": Key.space,
+    "backspace": Key.backspace,
+    "delete": Key.delete,
+    "del": Key.delete,
+    "up": Key.up,
+    "down": Key.down,
+    "left": Key.left,
+    "right": Key.right,
+    "home": Key.home,
+    "end": Key.end,
+    "pageup": Key.page_up,
+    "pagedown": Key.page_down,
+    "ctrl": Key.ctrl,
+    "alt": Key.alt,
+    "shift": Key.shift,
+    "cmd": Key.cmd,
+    "win": Key.cmd,
+    "super": Key.cmd,
+    "f1": Key.f1,
+    "f2": Key.f2,
+    "f3": Key.f3,
+    "f4": Key.f4,
+    "f5": Key.f5,
+    "f6": Key.f6,
+    "f7": Key.f7,
+    "f8": Key.f8,
+    "f9": Key.f9,
+    "f10": Key.f10,
+    "f11": Key.f11,
+    "f12": Key.f12,
 }
 
 _OSA_KEY_CODES = {
-    "enter": 36, "return": 36,
-    "delete": 51, "backspace": 51,
-    "esc": 53, "escape": 53,
-    "tab": 48, "space": 49,
-    "up": 126, "down": 125, "left": 123, "right": 124,
-    "home": 115, "end": 119,
-    "pageup": 116, "pagedown": 121,
-    "f1": 122, "f2": 120, "f3": 99,  "f4": 118,
-    "f5": 96,  "f6": 97,  "f7": 98,  "f8": 100,
-    "f9": 101, "f10": 109, "f11": 103, "f12": 111,
+    "enter": 36,
+    "return": 36,
+    "delete": 51,
+    "backspace": 51,
+    "esc": 53,
+    "escape": 53,
+    "tab": 48,
+    "space": 49,
+    "up": 126,
+    "down": 125,
+    "left": 123,
+    "right": 124,
+    "home": 115,
+    "end": 119,
+    "pageup": 116,
+    "pagedown": 121,
+    "f1": 122,
+    "f2": 120,
+    "f3": 99,
+    "f4": 118,
+    "f5": 96,
+    "f6": 97,
+    "f7": 98,
+    "f8": 100,
+    "f9": 101,
+    "f10": 109,
+    "f11": 103,
+    "f12": 111,
 }
 
 _OSA_MOD_MAP = {
-    "cmd": "command down", "command": "command down",
-    "ctrl": "control down", "control": "control down",
-    "alt": "option down",   "option": "option down",
+    "cmd": "command down",
+    "command": "command down",
+    "ctrl": "control down",
+    "control": "control down",
+    "alt": "option down",
+    "option": "option down",
     "shift": "shift down",
 }
 
 # ---------------------------------------------------------------------------
 # 通用键盘辅助方法 (pynput — 将按键发送到当前最前端的应用程序)
 # ---------------------------------------------------------------------------
+
 
 def press_shortcut(shortcut: str):
     """通过 pynput 触发键盘快捷键 (默认发送到当前焦点窗口)。"""
@@ -102,7 +153,9 @@ def clipboard_type(text: str):
     """通过系统剪贴板粘贴文本 (比模拟键盘逐字输入更稳定且支持中文)。"""
     if platform.system() == "Darwin":
         try:
-            prev = subprocess.check_output(["pbpaste"]).decode("utf-8", errors="replace")
+            prev = subprocess.check_output(["pbpaste"]).decode(
+                "utf-8", errors="replace"
+            )
         except Exception:
             prev = ""
         subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
@@ -129,6 +182,7 @@ def clear_field():
 # macOS AppleScript 辅助方法 — 进程级键盘操作 (可无视焦点后台发送)
 # ---------------------------------------------------------------------------
 
+
 def osa_send_key(proc_name: str, shortcut: str) -> bool:
     """
     通过 AppleScript 将按键直接发送给目标进程 `proc_name`。
@@ -153,9 +207,12 @@ def osa_send_key(proc_name: str, shortcut: str) -> bool:
         return False
     script = f'tell application "System Events" to tell process "{proc_name}" to {stmt}'
     try:
-        return subprocess.run(
-            ["osascript", "-e", script], capture_output=True, timeout=5
-        ).returncode == 0
+        return (
+            subprocess.run(
+                ["osascript", "-e", script], capture_output=True, timeout=5
+            ).returncode
+            == 0
+        )
     except Exception:
         return False
 
@@ -182,7 +239,10 @@ def osa_clear(proc_name: str):
 # macOS App 聚焦与窗口截图辅助方法
 # ---------------------------------------------------------------------------
 
-def ensure_frontmost(proc_name: str, open_name: str, bundle_id: str = "", retries: int = 2) -> bool:
+
+def ensure_frontmost(
+    proc_name: str, open_name: str, bundle_id: str = "", retries: int = 2
+) -> bool:
     """
     死磕到底，确保目标应用程序处于最前端 (聚焦状态)。
     特殊处理：如果目标是 "desktop" (桌面)，则自动触发跨平台的“显示桌面”操作。
@@ -190,14 +250,22 @@ def ensure_frontmost(proc_name: str, open_name: str, bundle_id: str = "", retrie
     成功聚焦返回 True，否则返回 False。
     """
     plat = platform.system()
-    
+
     # SPECIAL CASE: Desktop handling (cross-platform)
     target = (open_name or proc_name).strip().lower()
     if target == "desktop":
         if plat == "Darwin":
-            subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 103'])
+            subprocess.run(
+                ["osascript", "-e", 'tell application "System Events" to key code 103']
+            )
         elif plat == "Windows":
-            subprocess.run(["powershell", "-command", "(New-Object -ComObject shell.application).toggleDesktop()"])
+            subprocess.run(
+                [
+                    "powershell",
+                    "-command",
+                    "(New-Object -ComObject shell.application).toggleDesktop()",
+                ]
+            )
         else:
             subprocess.run(["wmctrl", "-k", "on"])
         return True
@@ -229,9 +297,12 @@ def ensure_frontmost(proc_name: str, open_name: str, bundle_id: str = "", retrie
                 }}
             }} catch(e) {{}}
             """
-            subprocess.run(["osascript", "-l", "JavaScript", "-e", jxa], capture_output=True)
+            subprocess.run(
+                ["osascript", "-l", "JavaScript", "-e", jxa], capture_output=True
+            )
             time.sleep(0.8)
     return False
+
 
 def restore_focus_if_needed():
     """
@@ -241,6 +312,7 @@ def restore_focus_if_needed():
     import os
     import tempfile
     import time
+
     state_file = os.path.join(tempfile.gettempdir(), "computer_use_state.json")
     if os.path.exists(state_file):
         try:
@@ -255,6 +327,7 @@ def restore_focus_if_needed():
                     time.sleep(0.3)
         except Exception:
             pass
+
 
 # ---------------------------------------------------------------------------
 def get_largest_window_bounds(proc_name: str) -> dict:
@@ -296,9 +369,13 @@ def get_largest_window_bounds(proc_name: str) -> dict:
     }}
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null":
             return json.loads(out)
     except Exception:
@@ -321,11 +398,15 @@ def get_window_id_for_process(proc_name: str) -> dict:
     """
     try:
         import Quartz as _Q
+
         # pgrep is a lightweight process lookup; it does NOT touch System Events
         # and does NOT cause any window-focus changes.
-        pid_lines = subprocess.check_output(
-            ["pgrep", "-x", proc_name], timeout=3
-        ).decode().strip().splitlines()
+        pid_lines = (
+            subprocess.check_output(["pgrep", "-x", proc_name], timeout=3)
+            .decode()
+            .strip()
+            .splitlines()
+        )
         if not pid_lines:
             return {}
         pid = int(pid_lines[0])
@@ -349,8 +430,10 @@ def get_window_id_for_process(proc_name: str) -> dict:
                 best_area = area
                 best = {
                     "id": int(w["kCGWindowNumber"]),
-                    "x": int(b["X"]), "y": int(b["Y"]),
-                    "w": ww, "h": wh,
+                    "x": int(b["X"]),
+                    "y": int(b["Y"]),
+                    "w": ww,
+                    "h": wh,
                 }
         return best or {}
     except Exception:
@@ -375,11 +458,13 @@ def capture_window_by_id(wid: int, x_off: int, y_off: int) -> tuple:
         briefly steal focus, clearing WeChat's search input.)
     """
     import tempfile as _tf
-    tmp = _tf.mktemp(suffix=".png")
+
+    tmp = _tf.NamedTemporaryFile(suffix=".png", delete=False).name
     try:
         subprocess.run(
             ["screencapture", "-l", str(wid), "-o", tmp],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
     except Exception:
         pass
@@ -389,13 +474,16 @@ def capture_window_by_id(wid: int, x_off: int, y_off: int) -> tuple:
 def get_screenshot_dir() -> str:
     import tempfile
     import os
+
     d = os.path.join(tempfile.gettempdir(), "polaris_computer_use_screenshots")
     os.makedirs(d, exist_ok=True)
     return d
 
+
 def clean_screenshot_dir():
     import os
     import glob
+
     d = get_screenshot_dir()
     for f in glob.glob(os.path.join(d, "*.png")):
         try:
@@ -403,29 +491,32 @@ def clean_screenshot_dir():
         except Exception:
             pass
 
-def capture_screen(app_name: str = "", bounds: dict = None) -> tuple[str, int, int]:
+
+def capture_screen(app_name: str = "", bounds: Optional[dict] = None) -> tuple[str, int, int]:
     """
     大一统截图入口函数。
     - 如果提供了 `bounds`，则精准裁剪该区域。
     - 如果没有 `bounds` 但提供了 `app_name`，会自动寻找该 App 最大的窗口并裁剪。
     - 如果什么都没提供，或者裁剪失败了，安全降级为全屏截图。
-    
+
     返回 (临时图片路径, x轴偏移量, y轴偏移量)。
     """
     import mss as _mss
     import mss.tools as _mss_tools
     import tempfile as _tf
 
-    tmp = _tf.mktemp(suffix=".png", dir=get_screenshot_dir())
-    
+    tmp = _tf.NamedTemporaryFile(
+        suffix=".png", dir=get_screenshot_dir(), delete=False
+    ).name
+
     if not bounds and app_name:
         bounds = get_largest_window_bounds(app_name)
 
     if bounds and bounds.get("w", 0) > 50 and bounds.get("h", 0) > 50:
         region = {
-            "top":    max(0, int(bounds["y"])),
-            "left":   max(0, int(bounds["x"])),
-            "width":  int(bounds["w"]),
+            "top": max(0, int(bounds["y"])),
+            "left": max(0, int(bounds["x"])),
+            "width": int(bounds["w"]),
             "height": int(bounds["h"]),
         }
         try:
@@ -445,7 +536,9 @@ def capture_screen(app_name: str = "", bounds: dict = None) -> tuple[str, int, i
     return tmp, 0, 0
 
 
-def safe_click(x: int, y: int, proc_name: str, open_name: str, bundle_id: str = "") -> bool:
+def safe_click(
+    x: int, y: int, proc_name: str, open_name: str, bundle_id: str = ""
+) -> bool:
     """
     安全点击：先把目标 App 拽到最前面，然后再对绝对坐标 (x, y) 触发左键点击。
     如果在 Mac 上无法把 App 拽到前面，则果断放弃点击，防止误伤其他软件。
@@ -462,13 +555,16 @@ def safe_click(x: int, y: int, proc_name: str, open_name: str, bundle_id: str = 
 # macOS Accessibility helpers
 # ---------------------------------------------------------------------------
 
+
 def get_frontmost_app_name() -> str:
     """Return the process name of the currently frontmost macOS app."""
     try:
         script = 'tell application "System Events" to get name of first process whose frontmost is true'
-        return subprocess.check_output(
-            ["osascript", "-e", script], timeout=5
-        ).decode().strip()
+        return (
+            subprocess.check_output(["osascript", "-e", script], timeout=5)
+            .decode()
+            .strip()
+        )
     except Exception:
         return ""
 
@@ -488,9 +584,13 @@ def get_frontmost_window_bounds() -> dict:
     }
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null":
             return json.loads(out)
     except Exception:
@@ -518,9 +618,13 @@ def get_process_window_bounds(proc_name: str) -> dict:
     }}
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null":
             return json.loads(out)
     except Exception:
@@ -562,9 +666,13 @@ def find_input_field(role_hint: str = "AXTextArea"):
     }}
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=8
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=8
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null":
             c = json.loads(out)
             return c["x"], c["y"]
@@ -624,9 +732,13 @@ def find_in_section(contact: str, section: str):
     }}
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=12
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=12
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null" and "," in out:
             return tuple(map(int, out.split(",")))
     except Exception:
@@ -641,7 +753,7 @@ def find_element_in_window(name: str, match_index: int = 0):
     Returns (x, y) or None.
     """
     js_name = json.dumps(name)
-    js_idx  = int(match_index)
+    js_idx = int(match_index)
     jxa = f"""
     function run() {{
         const se = Application('System Events');
@@ -672,9 +784,13 @@ def find_element_in_window(name: str, match_index: int = 0):
     }}
     """
     try:
-        out = subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=10
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["osascript", "-l", "JavaScript", "-e", jxa], timeout=10
+            )
+            .decode()
+            .strip()
+        )
         if out and out != "null" and "," in out:
             return tuple(map(int, out.split(",")))
     except Exception:
