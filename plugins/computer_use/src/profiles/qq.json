@@ -11,8 +11,8 @@
   "input_role_hint": "AXTextArea",
   "result_match_index": -1,
   "search_result_section": {
-    "zh": "群聊",
-    "en": "Group Chats"
+    "zh": ["联系人", "群聊"],
+    "en": ["Contacts", "Group Chats"]
   },
   "pre_search_reset": true
 }

@@ -21,21 +21,37 @@ from handlers import (
     handle_screenshot,
     handle_get_screen_state,
     handle_get_ui_tree,
+    handle_get_screen_info,
     handle_open_app,
     handle_get_running_apps,
     handle_send_message_to,
+    handle_get_window_list,
+    handle_close_window,
+    handle_minimize_app,
+    handle_quit_app,
+    handle_send_file_to,
     handle_click_element_by_id,
     handle_click_element_by_name,
     handle_focus_input,
-    handle_clear_and_type,
     handle_left_click,
     handle_right_click,
     handle_double_click,
     handle_mouse_move,
     handle_scroll,
     handle_left_click_drag,
+    handle_middle_click,
+    handle_triple_click,
+    handle_cursor_position,
     handle_type,
     handle_key,
+    handle_clear_and_type,
+    handle_hold_key,
+    handle_wait,
+    handle_read_clipboard,
+    handle_write_clipboard,
+    handle_zoom,
+    handle_read_messages_from,
+    handle_computer_batch,
 )
 
 
@@ -45,48 +61,76 @@ def check_app_permission(app_name):
     import os
 
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    if os.path.exists(config_path):
+
+    # 默认配置
+    default_config = {
+        "allowed_apps": ["*"],
+        "blocked_apps": ["Activity Monitor", "Terminal"],
+        "save_screenshots": False,
+    }
+
+    if not os.path.exists(config_path):
+        try:
+            with open(config_path, "w") as f:
+                json.dump(default_config, f, indent=2)
+        except Exception:
+            pass
+        config = default_config
+    else:
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
-                app_lower = app_name.lower()
-
-                # Check blacklist first
-                blocked = config.get("blocked_apps", [])
-                if any(b.lower() == app_lower for b in blocked):
-                    return False
-
-                # Then check whitelist
-                allowed = config.get("allowed_apps", ["*"])
-                if "*" in allowed:
-                    return True
-                return any(a.lower() == app_lower for a in allowed)
         except Exception:
-            pass
-    return True
+            config = default_config
+
+    app_lower = app_name.lower()
+    blocked = config.get("blocked_apps", [])
+    if any(b.lower() in app_lower for b in blocked):
+        return False
+
+    allowed = config.get("allowed_apps", ["*"])
+    if "*" in allowed:
+        return True
+    return any(a.lower() in app_lower for a in allowed)
 
 
 # Dispatch table — maps action name → handler function.
 # Add new actions here without touching handle_computer().
 _ACTION_DISPATCH = {
-    "open_app":              handle_open_app,
-    "get_ui_tree":           handle_get_ui_tree,
-    "get_screen_state":      handle_get_screen_state,
-    "get_running_apps":      handle_get_running_apps,
-    "click_element_by_id":   handle_click_element_by_id,
+    "open_app": handle_open_app,
+    "get_ui_tree": handle_get_ui_tree,
+    "get_screen_state": handle_get_screen_state,
+    "get_screen_info": handle_get_screen_info,
+    "get_running_apps": handle_get_running_apps,
+    "get_window_list": handle_get_window_list,
+    "close_window": handle_close_window,
+    "minimize_app": handle_minimize_app,
+    "quit_app": handle_quit_app,
+    "click_element_by_id": handle_click_element_by_id,
     "click_element_by_name": handle_click_element_by_name,
-    "focus_input":           handle_focus_input,
-    "clear_and_type":        handle_clear_and_type,
-    "send_message_to":       handle_send_message_to,
-    "screenshot":            handle_screenshot,
-    "mouse_move":            handle_mouse_move,
-    "scroll":                handle_scroll,
-    "left_click":            handle_left_click,
-    "right_click":           handle_right_click,
-    "double_click":          handle_double_click,
-    "left_click_drag":       handle_left_click_drag,
-    "type":                  handle_type,
-    "key":                   handle_key,
+    "focus_input": handle_focus_input,
+    "clear_and_type": handle_clear_and_type,
+    "send_message_to": handle_send_message_to,
+    "send_file_to": handle_send_file_to,
+    "read_messages_from": handle_read_messages_from,
+    "screenshot": handle_screenshot,
+    "mouse_move": handle_mouse_move,
+    "scroll": handle_scroll,
+    "left_click": handle_left_click,
+    "right_click": handle_right_click,
+    "double_click": handle_double_click,
+    "middle_click": handle_middle_click,
+    "triple_click": handle_triple_click,
+    "left_click_drag": handle_left_click_drag,
+    "cursor_position": handle_cursor_position,
+    "type": handle_type,
+    "key": handle_key,
+    "hold_key": handle_hold_key,
+    "wait": handle_wait,
+    "read_clipboard": handle_read_clipboard,
+    "write_clipboard": handle_write_clipboard,
+    "zoom": handle_zoom,
+    "computer_batch": handle_computer_batch,
 }
 
 
@@ -111,8 +155,22 @@ def handle_computer(args):
     return handler(args)
 
 
-_READ_ACTIONS = {"screenshot", "get_screen_state", "get_ui_tree"}
-_RESET_STATE_ACTIONS = {"open_app", "send_message_to"}
+_READ_ACTIONS = {
+    "screenshot",
+    "get_screen_state",
+    "get_ui_tree",
+    "get_screen_info",
+    "get_running_apps",
+    "get_window_list",
+    "read_clipboard",
+    "cursor_position",
+}
+_RESET_STATE_ACTIONS = {
+    "open_app",
+    "send_message_to",
+    "send_file_to",
+    "read_messages_from",
+}
 
 
 def _clear_state_file():
@@ -165,6 +223,7 @@ def _handle_tools_call(req_id, params):
     app_name = args.get("app_name")
 
     import utils
+
     utils.clean_screenshot_dir()
 
     if action in _RESET_STATE_ACTIONS:
@@ -196,7 +255,10 @@ def main():
                     {
                         "protocolVersion": "2025-11-25",
                         "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "polaris-computer-mcp", "version": "1.0.0"},
+                        "serverInfo": {
+                            "name": "polaris-computer-mcp",
+                            "version": "1.0.0",
+                        },
                     },
                 )
             elif method == "ping":

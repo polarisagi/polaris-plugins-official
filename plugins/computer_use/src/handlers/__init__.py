@@ -1,5 +1,19 @@
-from .screen import handle_screenshot, handle_get_screen_state, handle_get_ui_tree
-from .apps import handle_open_app, handle_get_running_apps, handle_send_message_to
+from .screen import (
+    handle_screenshot,
+    handle_get_screen_state,
+    handle_get_ui_tree,
+    handle_get_screen_info,
+)
+from .apps import (
+    handle_open_app,
+    handle_get_running_apps,
+    handle_send_message_to,
+    handle_get_window_list,
+    handle_close_window,
+    handle_minimize_app,
+    handle_quit_app,
+    handle_send_file_to,
+)
 from .interaction import (
     handle_click_element_by_id,
     handle_click_element_by_name,
@@ -12,16 +26,36 @@ from .mouse import (
     handle_mouse_move,
     handle_scroll,
     handle_left_click_drag,
+    handle_middle_click,
+    handle_triple_click,
+    handle_cursor_position,
 )
-from .keyboard import handle_type, handle_key, handle_clear_and_type
+from .keyboard import (
+    handle_type,
+    handle_key,
+    handle_clear_and_type,
+    handle_hold_key,
+    handle_wait,
+    handle_read_clipboard,
+    handle_write_clipboard,
+    handle_zoom,
+)
+from .chat_reader import handle_read_messages_from
+from .batch import handle_computer_batch
 
 __all__ = [
     "handle_screenshot",
     "handle_get_screen_state",
     "handle_get_ui_tree",
+    "handle_get_screen_info",
     "handle_open_app",
     "handle_get_running_apps",
     "handle_send_message_to",
+    "handle_get_window_list",
+    "handle_close_window",
+    "handle_minimize_app",
+    "handle_quit_app",
+    "handle_send_file_to",
     "handle_click_element_by_id",
     "handle_click_element_by_name",
     "handle_focus_input",
@@ -29,9 +63,19 @@ __all__ = [
     "handle_right_click",
     "handle_double_click",
     "handle_mouse_move",
+    "handle_scroll",
+    "handle_left_click_drag",
+    "handle_middle_click",
+    "handle_triple_click",
+    "handle_cursor_position",
     "handle_type",
     "handle_key",
     "handle_clear_and_type",
-    "handle_scroll",
-    "handle_left_click_drag",
+    "handle_hold_key",
+    "handle_wait",
+    "handle_read_clipboard",
+    "handle_write_clipboard",
+    "handle_zoom",
+    "handle_read_messages_from",
+    "handle_computer_batch",
 ]

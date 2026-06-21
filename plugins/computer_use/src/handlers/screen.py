@@ -136,7 +136,9 @@ def handle_get_ui_tree(args):
             return [{"type": "text", "text": json.dumps([{"error": str(e)}])}]
 
 
-def _collect_ui_elements(app_name: str, lines: list, id_map: dict, start_id: int) -> int:
+def _collect_ui_elements(
+    app_name: str, lines: list, id_map: dict, start_id: int
+) -> int:
     """Populate lines/id_map with accessibility-tree elements. Returns next free id."""
     current_id = start_id
     try:
@@ -195,7 +197,12 @@ def _collect_ocr_text(app_name: str, lines: list, id_map: dict, start_id: int) -
                 text = parts[0]
                 abs_x = int(float(parts[1])) + x_off
                 abs_y = int(float(parts[2])) + y_off
-                id_map[str(current_id)] = {"x": abs_x, "y": abs_y, "type": "OCR", "text": text}
+                id_map[str(current_id)] = {
+                    "x": abs_x,
+                    "y": abs_y,
+                    "type": "OCR",
+                    "text": text,
+                }
                 lines.append(f'[{current_id}] "{text}"')
                 current_id += 1
     except Exception as exc:
@@ -225,7 +232,10 @@ def handle_get_screen_state(args):
     try:
         with open(state_file, "w") as f:
             json.dump(
-                {"metadata": {"app_name": app_name, "timestamp": time.time()}, "elements": id_map},
+                {
+                    "metadata": {"app_name": app_name, "timestamp": time.time()},
+                    "elements": id_map,
+                },
                 f,
             )
     except Exception as e:
@@ -236,6 +246,19 @@ def handle_get_screen_state(args):
 
 def handle_screenshot(args):
     app_name = args.get("app_name", "")
+    mode = args.get("mode", "base64")
+
+    save_screenshots = False
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "config.json"
+    )
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                c = json.load(f)
+                save_screenshots = bool(c.get("save_screenshots", False))
+        except Exception:
+            pass
 
     # Save the app_name to state so that subsequent low-level mouse clicks restore focus
     state_file = os.path.join(tempfile.gettempdir(), "computer_use_state.json")
@@ -254,13 +277,52 @@ def handle_screenshot(args):
     try:
         tmp_path, _, _ = utils.capture_screen(app_name=app_name)
         if tmp_path and os.path.exists(tmp_path):
+            if mode == "path":
+                return [{"type": "text", "text": f"Screenshot saved to {tmp_path}"}]
             with open(tmp_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
             return [{"type": "image", "data": b64, "mimeType": "image/png"}]
         return [{"type": "text", "text": "Screenshot failed"}]
     finally:
         if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+            if not save_screenshots and mode != "path":
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+
+
+def handle_get_screen_info(args):
+    """获取当前主显示器的分辨率、缩放比例(scale factor)"""
+    plat = platform.system()
+    if plat == "Darwin":
+        jxa = """
+        function run() {
+            const app = Application('Finder');
+            const b = app.desktop.window.bounds();
+            return JSON.stringify({width: b.width, height: b.height, scale: 2.0});
+        }
+        """
+        try:
+            out = (
+                subprocess.check_output(
+                    ["osascript", "-l", "JavaScript", "-e", jxa], timeout=5
+                )
+                .decode()
+                .strip()
+            )
+            return [{"type": "text", "text": out}]
+        except Exception:
+            pass
+    import mss
+
+    with mss.mss() as sct:
+        m = sct.monitors[1]
+        return [
+            {
+                "type": "text",
+                "text": json.dumps(
+                    {"width": m["width"], "height": m["height"], "scale": 1.0}
+                ),
+            }
+        ]

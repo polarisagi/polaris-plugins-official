@@ -16,6 +16,9 @@ from pynput.mouse import Controller as MouseController, Button
 mouse = MouseController()
 keyboard = KeyboardController()
 
+# 当前截图目标显示器索引（0=所有显示器，1=主显示器，2=第二显示器...）
+_active_display_index: int = 1
+
 # ---------------------------------------------------------------------------
 # 语言环境检测 (Locale detection)
 # ---------------------------------------------------------------------------
@@ -81,6 +84,14 @@ _PYNPUT_KEY_MAP = {
     "f10": Key.f10,
     "f11": Key.f11,
     "f12": Key.f12,
+    "f13": Key.f13 if hasattr(Key, "f13") else None,
+    "f14": Key.f14 if hasattr(Key, "f14") else None,
+    "f15": Key.f15 if hasattr(Key, "f15") else None,
+    "f16": Key.f16 if hasattr(Key, "f16") else None,
+    "f17": Key.f17 if hasattr(Key, "f17") else None,
+    "f18": Key.f18 if hasattr(Key, "f18") else None,
+    "f19": Key.f19 if hasattr(Key, "f19") else None,
+    "f20": Key.f20 if hasattr(Key, "f20") else None,
 }
 
 _OSA_KEY_CODES = {
@@ -130,12 +141,13 @@ _OSA_MOD_MAP = {
 
 
 def press_shortcut(shortcut: str):
-    """通过 pynput 触发键盘快捷键 (默认发送到当前焦点窗口)。"""
     keys = [k.strip() for k in shortcut.lower().split("+")]
     pressed = []
     try:
         for k in keys:
             target = _PYNPUT_KEY_MAP.get(k)
+            if target is None and k in _PYNPUT_KEY_MAP:
+                raise Exception(f"Key '{k}' not supported on this OS/pynput version")
             if target:
                 keyboard.press(target)
                 pressed.append(target)
@@ -150,7 +162,7 @@ def press_shortcut(shortcut: str):
 
 
 def clipboard_type(text: str):
-    """通过系统剪贴板粘贴文本 (比模拟键盘逐字输入更稳定且支持中文)。"""
+    """通过系统剪贴板粘贴文本（CJK 安全，跨平台）。"""
     if platform.system() == "Darwin":
         try:
             prev = subprocess.check_output(["pbpaste"]).decode(
@@ -167,14 +179,30 @@ def clipboard_type(text: str):
         except Exception:
             pass
     else:
-        keyboard.type(text)
+        # Windows / Linux: 用 pyperclip，保存并恢复原剪贴板
+        try:
+            import pyperclip
+
+            prev = pyperclip.paste()
+            pyperclip.copy(text)
+            time.sleep(0.05)
+            sc = "ctrl+v"
+            press_shortcut(sc)
+            time.sleep(0.15)
+            try:
+                pyperclip.copy(prev)
+            except Exception:
+                pass
+        except ImportError:
+            # pyperclip 未安装时降级
+            keyboard.type(text)
 
 
 def clear_field():
-    """在当前聚焦的输入框中执行全选并删除 (模拟 Cmd+A / Ctrl+A 然后 Delete)。"""
+    """全选当前输入框内容并删除。"""
     press_shortcut("cmd+a" if platform.system() == "Darwin" else "ctrl+a")
     time.sleep(0.05)
-    press_shortcut("delete")
+    press_shortcut("backspace")
     time.sleep(0.05)
 
 
@@ -492,7 +520,9 @@ def clean_screenshot_dir():
             pass
 
 
-def capture_screen(app_name: str = "", bounds: Optional[dict] = None) -> tuple[str, int, int]:
+def capture_screen(
+    app_name: str = "", bounds: Optional[dict] = None
+) -> tuple[str, int, int]:
     """
     大一统截图入口函数。
     - 如果提供了 `bounds`，则精准裁剪该区域。
@@ -527,10 +557,21 @@ def capture_screen(app_name: str = "", bounds: Optional[dict] = None) -> tuple[s
         except Exception:
             pass  # fall through to full-screen
 
-    # Full-screen fallback
+    # Full-screen fallback — 使用当前活跃显示器
     try:
         with _mss.MSS() as sct:
-            sct.shot(output=tmp)
+            monitors = sct.monitors
+            target_idx = _active_display_index
+            if target_idx >= len(monitors):
+                target_idx = 1
+            if target_idx == 0:
+                sct.shot(output=tmp)
+                return tmp, 0, 0
+            else:
+                m = monitors[target_idx]
+                img = sct.grab(m)
+                _mss_tools.to_png(img.rgb, img.size, output=tmp)
+                return tmp, m["left"], m["top"]
     except Exception:
         pass
     return tmp, 0, 0
@@ -796,3 +837,37 @@ def find_element_in_window(name: str, match_index: int = 0):
     except Exception:
         pass
     return None
+
+
+def compile_swift_binary(src_path: str, out_path: str, timeout: int = 60) -> bool:
+    """
+    线程/进程安全的 Swift 编译。使用文件锁确保不被并发编译。
+    Returns True on success.
+    """
+    import fcntl
+    import os
+    import subprocess
+
+    if os.path.exists(out_path):
+        return True
+    if not os.path.exists(src_path):
+        return False
+    lock_path = out_path + ".lock"
+    try:
+        with open(lock_path, "w") as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            if os.path.exists(out_path):  # 另一进程已编译完
+                return True
+            result = subprocess.run(
+                ["swiftc", src_path, "-o", out_path],
+                capture_output=True,
+                timeout=timeout,
+            )
+            return result.returncode == 0
+    except Exception:
+        return False
+    finally:
+        try:
+            os.remove(lock_path)
+        except Exception:
+            pass

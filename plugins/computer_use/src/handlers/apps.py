@@ -7,6 +7,89 @@ from profiles_loader import APP_PROFILES, resolve
 from .interaction import handle_focus_input
 
 
+def _app_exists_mac(app_name: str, open_name: str, bundle_id: str) -> bool:
+    import shutil
+    import os
+
+    if bundle_id:
+        try:
+            result = subprocess.run(
+                ["mdfind", f"kMDItemCFBundleIdentifier == '{bundle_id}'"],
+                capture_output=True,
+                timeout=3,
+            )
+            if result.stdout.strip():
+                return True
+        except Exception:
+            pass
+    search_name = open_name or app_name
+    for base in ["/Applications", os.path.expanduser("~/Applications")]:
+        if os.path.isdir(os.path.join(base, f"{search_name}.app")):
+            return True
+    return bool(shutil.which(app_name))
+
+
+def _app_exists_win(app_name: str) -> bool:
+    import shutil
+    import os
+
+    if shutil.which(app_name):
+        return True
+    for base in [
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        os.path.expanduser(r"~\AppData\Local"),
+    ]:
+        if base and os.path.isfile(os.path.join(base, app_name, f"{app_name}.exe")):
+            return True
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+        )
+        try:
+            winreg.QueryValue(key, f"{app_name}.exe")
+            return True
+        except FileNotFoundError:
+            pass
+    except Exception:
+        pass
+    return False
+
+
+def _app_exists_linux(app_name: str, open_name: str) -> bool:
+    import shutil
+    import os
+
+    if shutil.which(app_name):
+        return True
+    desktop_dirs = [
+        "/usr/share/applications",
+        "/usr/local/share/applications",
+        os.path.expanduser("~/.local/share/applications"),
+    ]
+    search = (open_name or app_name).lower()
+    for d in desktop_dirs:
+        if os.path.isdir(d):
+            for fname in os.listdir(d):
+                if search in fname.lower() and fname.endswith(".desktop"):
+                    return True
+    return False
+
+
+def _app_exists(app_name: str, open_name: str = "", bundle_id: str = "") -> bool:
+    """跨平台检测应用是否已安装。"""
+    plat = platform.system()
+    if plat == "Darwin":
+        return _app_exists_mac(app_name, open_name, bundle_id)
+    elif plat == "Windows":
+        return _app_exists_win(app_name)
+    else:
+        return _app_exists_linux(app_name, open_name)
+
+
 def handle_open_app(args):
     app_name = args.get("app_name", "")
     open_name = args.get("open_name", "") or app_name
@@ -18,52 +101,11 @@ def handle_open_app(args):
 
     # 1. 跨平台预检机制：在尝试唤醒之前，先检查应用在系统中是否真正安装
     if open_name and open_name.lower() != "desktop":
-        exists = False
-        if plat == "Darwin":
-            # Mac 下通过 bundle id 探测应用是否存在
-            r_check = subprocess.run(
-                ["osascript", "-e", f'id of application "{open_name}"'],
-                capture_output=True,
-            )
-            exists = r_check.returncode == 0
-        elif plat == "Windows":
-            # Win 下先检查环境变量 PATH，然后利用 PowerShell 检索“开始”菜单
-            import shutil
-
-            if shutil.which(open_name):
-                exists = True
-            else:
-                ps_cmd = (
-                    f"Get-StartApps | Where-Object {{$_.Name -match '{open_name}'}}"
-                )
-                r_check = subprocess.run(
-                    ["powershell", "-command", ps_cmd], capture_output=True, text=True
-                )
-                exists = bool(r_check.stdout.strip())
-        else:  # Linux
-            # Linux 下检索桌面应用启动图标
-            import shutil
-
-            if shutil.which(open_name):
-                exists = True
-            else:
-                import glob as _glob
-                import os as _os
-
-                desktop_files = _glob.glob(
-                    f"/usr/share/applications/*{open_name}*.desktop"
-                ) + _glob.glob(
-                    _os.path.expanduser(
-                        f"~/.local/share/applications/*{open_name}*.desktop"
-                    )
-                )
-                exists = bool(desktop_files)
-
-        if not exists:
+        if not _app_exists(app_name, open_name=open_name, bundle_id=bundle_id):
             return [
                 {
                     "type": "text",
-                    "text": f"Error: Application '{open_name}' is not installed or not found. Please try a different name or ask the user.",
+                    "text": f"App '{app_name}' is not installed or not found",
                 }
             ]
 
@@ -172,7 +214,9 @@ def _activate_app_macos(open_name: str, proc_name: str, profile: dict, steps, _l
     front = get_frontmost_app_name()
     if proc_name.lower() not in (front or "").lower():
         _log(f"[1b] Retrying focus (frontmost='{front}')")
-        subprocess.run(["osascript", "-e", f'tell application "{open_name}" to activate'])
+        subprocess.run(
+            ["osascript", "-e", f'tell application "{open_name}" to activate']
+        )
         time.sleep(1.5)
         front = get_frontmost_app_name()
     _log(f"[1] Frontmost: '{front}'")
@@ -184,7 +228,9 @@ def _activate_app_macos(open_name: str, proc_name: str, profile: dict, steps, _l
         _log(f"[1] Window id={winfo['id']} bounds={profile['_window_bounds']}")
 
 
-def _ensure_frontmost_step(plat: str, proc_name: str, open_name: str, bundle_id: str, _log):
+def _ensure_frontmost_step(
+    plat: str, proc_name: str, open_name: str, bundle_id: str, _log
+):
     """Re-focus the app after search-result selection (macOS only)."""
     if plat != "Darwin":
         return
@@ -200,8 +246,12 @@ def handle_send_message_to(args):
     message = args.get("message", "").strip()
     app_key = args.get("app", args.get("app_name", "")).strip().lower()
     if not app_key:
-        chat_apps = [k for k, v in APP_PROFILES.items() if v.get("category") == "chat" and not k.isascii()]
-        app_key = chat_apps[0] if chat_apps else "wechat"
+        # 取所有 chat 类应用的 key，优先微信，否则取第一个
+        chat_keys = [k for k, v in APP_PROFILES.items() if v.get("category") == "chat"]
+        preferred = [k for k in chat_keys if "wechat" in k or "微信" in k]
+        app_key = (
+            preferred[0] if preferred else (chat_keys[0] if chat_keys else "wechat")
+        )
 
     wait_search = float(args.get("wait_search", 1.5))
     wait_chat = float(args.get("wait_chat", 0.8))
@@ -210,8 +260,12 @@ def handle_send_message_to(args):
 
     profile = APP_PROFILES.get(app_key)
     if not profile:
-        known = sorted({k for k, v in APP_PROFILES.items() if v.get("category") == "chat"})
-        raise Exception(f"Unknown app '{app_key}'. Known chat apps: {', '.join(known)}.")
+        known = sorted(
+            {k for k, v in APP_PROFILES.items() if v.get("category") == "chat"}
+        )
+        raise Exception(
+            f"Unknown app '{app_key}'. Known chat apps: {', '.join(known)}."
+        )
 
     plat = platform.system()
     proc_name = profile.get("process_name", profile.get("open_name", app_key))
@@ -231,7 +285,9 @@ def handle_send_message_to(args):
 
     # Step 1 — launch / focus
     _log(f"[1] Activating {actual_app}")
-    handle_open_app({"app_name": actual_app, "open_name": open_name, "bundle_id": bundle_id})
+    handle_open_app(
+        {"app_name": actual_app, "open_name": open_name, "bundle_id": bundle_id}
+    )
     time.sleep(2.0)
     if plat == "Darwin":
         _activate_app_macos(open_name, proc_name, profile, steps, _log)
@@ -256,7 +312,9 @@ def handle_send_message_to(args):
 
     # Step 4 — select result
     _log(f"[4] Selecting '{contact_name}'")
-    adapter.select_search_result(contact_name, search_sect, profile, proc_name, plat, _log)
+    adapter.select_search_result(
+        contact_name, search_sect, profile, proc_name, plat, _log
+    )
     time.sleep(wait_chat + 0.5)
 
     # Step 5 — re-focus after selection
@@ -283,4 +341,334 @@ def handle_send_message_to(args):
     _log(f"[8] Sending via: {send_sc}")
     adapter.press_send_shortcut(proc_name, plat, send_sc)
 
-    return [{"type": "text", "text": f"✅ Sent to '{contact_name}' via {actual_app}\n\n" + "\n".join(steps)}]
+    return [
+        {
+            "type": "text",
+            "text": f"✅ Sent to '{contact_name}' via {actual_app}\n\n"
+            + "\n".join(steps),
+        }
+    ]
+
+
+def handle_get_window_list(args):
+    """
+    返回所有可见窗口的详细信息（app 名、标题、位置、大小）。
+    比 get_running_apps 更详细，适合多窗口操作。
+    """
+    import json as _json
+
+    plat = platform.system()
+
+    if plat == "Darwin":
+        jxa = """
+        function run() {
+            const se = Application('System Events');
+            const result = [];
+            const procs = se.processes.whose({ backgroundOnly: false })();
+            for (let p = 0; p < procs.length; p++) {
+                try {
+                    const proc = procs[p];
+                    const appName = proc.name();
+                    const wins = proc.windows();
+                    for (let w = 0; w < wins.length; w++) {
+                        try {
+                            const win = wins[w];
+                            const pos = win.position();
+                            const sz = win.size();
+                            const title = win.name() || '';
+                            if (pos && sz && sz[0] > 50 && sz[1] > 50) {
+                                result.push({
+                                    app: appName, title: title,
+                                    x: pos[0], y: pos[1],
+                                    width: sz[0], height: sz[1]
+                                });
+                            }
+                        } catch(e) {}
+                    }
+                } catch(e) {}
+            }
+            return JSON.stringify(result);
+        }
+        """
+        try:
+            out = (
+                subprocess.check_output(
+                    ["osascript", "-l", "JavaScript", "-e", jxa], timeout=12
+                )
+                .decode()
+                .strip()
+            )
+            windows = _json.loads(out)
+            if not windows:
+                return [{"type": "text", "text": "No visible windows found"}]
+            lines = ["Windows:"]
+            for w in windows:
+                lines.append(
+                    f'  [{w["app"]}] "{w["title"]}" @ ({w["x"]},{w["y"]}) {w["width"]}×{w["height"]}'
+                )
+            return [{"type": "text", "text": "\n".join(lines)}]
+        except Exception as e:
+            return [{"type": "text", "text": f"Error: {e}"}]
+
+    elif plat == "Windows":
+        try:
+            from pywinauto import Desktop
+
+            wins = Desktop(backend="uia").windows(visible_only=True)
+            lines = ["Windows:"]
+            for w in wins:
+                r = w.rectangle()
+                lines.append(
+                    f'  "{w.window_text()}" @ ({r.left},{r.top}) {r.width()}×{r.height()}'
+                )
+            return [{"type": "text", "text": "\n".join(lines)}]
+        except Exception as e:
+            return [{"type": "text", "text": f"Error: {e}"}]
+
+    else:
+        try:
+            out = subprocess.check_output(["wmctrl", "-lG"], timeout=5).decode()
+            lines = ["Windows:"]
+            for line in out.splitlines():
+                parts = line.split(None, 7)
+                if len(parts) >= 8:
+                    lines.append(
+                        f'  "{parts[7]}" @ ({parts[2]},{parts[3]}) {parts[4]}×{parts[5]}'
+                    )
+            return [{"type": "text", "text": "\n".join(lines)}]
+        except Exception as e:
+            return [{"type": "text", "text": f"Error (requires wmctrl): {e}"}]
+
+
+def handle_close_window(args):
+    """
+    关闭当前最前端窗口（或指定 app 的窗口）。
+    - app_name: 目标应用名（可选，不传则关闭当前最前端窗口）
+    """
+    import utils as _u
+
+    plat = platform.system()
+    app_name = args.get("app_name", "")
+
+    if plat == "Darwin":
+        if app_name:
+            _u.ensure_frontmost(app_name, app_name)
+            time.sleep(0.3)
+        # macOS 标准关闭窗口快捷键
+        _u.press_shortcut("cmd+w")
+        return [
+            {
+                "type": "text",
+                "text": f"Closed window{' of ' + app_name if app_name else ''}",
+            }
+        ]
+
+    elif plat == "Windows":
+        _u.press_shortcut("alt+f4")
+        return [{"type": "text", "text": "Closed window (Alt+F4)"}]
+
+    else:
+        _u.press_shortcut("alt+f4")
+        return [{"type": "text", "text": "Closed window (Alt+F4)"}]
+
+
+def handle_minimize_app(args):
+    """
+    最小化指定应用或当前最前端窗口。
+    - app_name: 目标应用名（可选）
+    """
+    import utils as _u
+
+    plat = platform.system()
+    app_name = args.get("app_name", "")
+
+    if plat == "Darwin":
+        if app_name:
+            _u.ensure_frontmost(app_name, app_name)
+            time.sleep(0.3)
+        _u.press_shortcut("cmd+m")
+        return [
+            {
+                "type": "text",
+                "text": f"Minimized{' ' + app_name if app_name else ' active window'}",
+            }
+        ]
+
+    elif plat == "Windows":
+        _u.press_shortcut("win+down")
+        return [{"type": "text", "text": "Minimized window"}]
+
+    else:
+        try:
+            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-b", "add,hidden"], timeout=3)
+        except Exception:
+            _u.press_shortcut("super+h")
+        return [{"type": "text", "text": "Minimized window"}]
+
+
+def handle_quit_app(args):
+    """
+    退出（而非最小化）指定应用。
+    - app_name: 目标应用名（必须）
+    """
+    app_name = args.get("app_name", "")
+    if not app_name:
+        raise Exception("quit_app requires 'app_name'")
+
+    plat = platform.system()
+
+    if plat == "Darwin":
+        from utils import ensure_frontmost, press_shortcut
+
+        ensure_frontmost(app_name, app_name)
+        time.sleep(0.3)
+        press_shortcut("cmd+q")
+        return [{"type": "text", "text": f"Quit {app_name}"}]
+
+    elif plat == "Windows":
+        try:
+            subprocess.run(["taskkill", "/IM", f"{app_name}.exe", "/F"], timeout=5)
+        except Exception as e:
+            return [{"type": "text", "text": f"Error: {e}"}]
+        return [{"type": "text", "text": f"Quit {app_name}"}]
+
+    else:
+        try:
+            subprocess.run(["pkill", "-x", app_name], timeout=5)
+        except Exception as e:
+            return [{"type": "text", "text": f"Error: {e}"}]
+        return [{"type": "text", "text": f"Quit {app_name}"}]
+
+
+def handle_send_file_to(args):
+    """
+    向聊天联系人发送文件/图片（macOS 专用）。
+    - contact_name: 联系人/群聊名称（必须）
+    - file_path: 要发送的文件绝对路径（必须）
+    - app: 聊天应用别名（默认 'wechat'）
+
+    实现：先通过 send_message_to 逻辑定位对话，再拖入文件或通过剪贴板粘贴图片。
+    """
+    import os
+
+    if platform.system() != "Darwin":
+        return [{"type": "text", "text": "send_file_to is currently macOS only"}]
+
+    contact_name = args.get("contact_name", "").strip()
+    file_path = args.get("file_path", "").strip()
+    if not contact_name:
+        raise Exception("send_file_to requires 'contact_name'")
+    if not file_path:
+        raise Exception("send_file_to requires 'file_path'")
+    if not os.path.exists(file_path):
+        return [{"type": "text", "text": f"File not found: {file_path}"}]
+
+    app_key = args.get("app", args.get("app_name", "wechat")).strip().lower()
+    profile = APP_PROFILES.get(app_key)
+    if not profile:
+        raise Exception(f"Unknown app '{app_key}'")
+
+    # Step 1: 打开对话（复用 open_app + 搜索选联系人逻辑）
+    proc_name = profile.get("process_name", app_key)
+    open_name = profile.get("open_name", proc_name)
+    bundle_id = profile.get("bundle_id", "")
+    input_hint = resolve(profile.get("input_role_hint", "AXTextArea"))
+
+    handle_open_app(
+        {"app_name": open_name, "open_name": open_name, "bundle_id": bundle_id}
+    )
+    time.sleep(1.5)
+
+    import utils
+
+    search_sc = resolve(profile.get("search_shortcut", "cmd+f"))
+    utils.press_shortcut(search_sc)
+    time.sleep(0.5)
+    utils.clear_field()
+    time.sleep(0.1)
+    utils.clipboard_type(contact_name)
+    time.sleep(float(profile.get("wait_before_ocr", 1.5)))
+    utils.press_shortcut("down")
+    time.sleep(0.2)
+    utils.press_shortcut("enter")
+    time.sleep(1.0)
+
+    # Step 2: 聚焦输入框
+    from handlers.interaction import handle_focus_input
+
+    handle_focus_input({"hint": input_hint, "app_name": open_name})
+    time.sleep(0.3)
+
+    # Step 3: 将文件路径写入剪贴板并粘贴（支持图片文件直接粘贴）
+    ext = os.path.splitext(file_path)[1].lower()
+    image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"}
+
+    if ext in image_exts:
+        # 图片：用 AppleScript 将图片写入剪贴板后粘贴
+        osa = f"""
+        set imgFile to POSIX file "{file_path}"
+        set theImage to read imgFile as JPEG picture
+        set the clipboard to theImage
+        """
+        try:
+            subprocess.run(["osascript", "-e", osa], timeout=5)
+            time.sleep(0.2)
+            utils.press_shortcut("cmd+v")
+            time.sleep(0.5)
+            send_sc = resolve(profile.get("send_shortcut", "enter"))
+            utils.press_shortcut(send_sc)
+            return [
+                {
+                    "type": "text",
+                    "text": f"✅ Sent image '{os.path.basename(file_path)}' to '{contact_name}'",
+                }
+            ]
+        except Exception:
+            pass
+
+    # 非图片或图片粘贴失败：使用拖拽方式（通过 Finder）
+    try:
+        osa_drag = f"""
+        tell application "Finder"
+            set theFile to POSIX file "{file_path}" as alias
+            reveal theFile
+            activate
+        end tell
+        """
+        subprocess.run(["osascript", "-e", osa_drag], timeout=5)
+        time.sleep(0.5)
+        bounds = utils.get_process_window_bounds(proc_name)
+        if bounds:
+            cx = bounds["x"] + bounds["w"] // 2
+            cy = bounds["y"] + bounds["h"] // 2
+            front_bounds = utils.get_frontmost_window_bounds()
+            if front_bounds:
+                file_x = front_bounds["x"] + front_bounds["w"] // 2
+                file_y = front_bounds["y"] + front_bounds["h"] // 2
+                from handlers.mouse import handle_left_click_drag
+
+                handle_left_click_drag(
+                    {"start_coordinate": [file_x, file_y], "coordinate": [cx, cy]}
+                )
+                time.sleep(1.0)
+                utils.ensure_frontmost(proc_name, open_name, bundle_id)
+                return [
+                    {
+                        "type": "text",
+                        "text": f"✅ Dragged '{os.path.basename(file_path)}' to '{contact_name}'",
+                    }
+                ]
+    except Exception as e:
+        return [
+            {
+                "type": "text",
+                "text": f"File send failed: {e}. Try opening the file manually and dragging it.",
+            }
+        ]
+
+    return [
+        {
+            "type": "text",
+            "text": f"File send attempted for '{os.path.basename(file_path)}'",
+        }
+    ]

@@ -364,7 +364,9 @@ async def pin_post(platform: str, post_identifier: str):
 
 
 @mcp.tool()
-async def save_draft(platform: str, content: str, media_paths: Optional[list[str]] = None):
+async def save_draft(
+    platform: str, content: str, media_paths: Optional[list[str]] = None
+):
     """Save a post as a draft (without publishing)."""
     adapter = await _get_adapter(platform)
     if isinstance(adapter, str):

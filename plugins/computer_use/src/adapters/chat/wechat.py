@@ -55,21 +55,9 @@ _OCR_BIN = os.path.join(_SRC_DIR, "find_text_on_screen")
 
 
 def _ensure_ocr_binary() -> bool:
-    """Compile the Swift OCR tool if not already built. Returns True on success."""
-    if os.path.exists(_OCR_BIN):
-        return True
-    if not os.path.exists(_OCR_SRC):
-        return False
-    try:
-        subprocess.run(
-            ["swiftc", _OCR_SRC, "-o", _OCR_BIN],
-            check=True,
-            capture_output=True,
-            timeout=60,
-        )
-        return True
-    except Exception:
-        return False
+    import utils
+
+    return utils.compile_swift_binary(_OCR_SRC, _OCR_BIN)
 
 
 def _ocr_find(screenshot_path: str, text: str) -> list:
@@ -383,35 +371,18 @@ class WeChatAdapter(BaseAdapter):
 
 def _screenshot_window(profile: dict) -> tuple:
     """
-    Capture WeChat's window using `screencapture -l <id> -o`.
+    Capture WeChat's window using screencapture -l <wid> when window_id is
+    cached, falling back to mss region crop.
     Returns (tmp_path, x_offset, y_offset).
-
-    Why screencapture -l instead of mss:
-      - Captures the ACTUAL window even when it is behind other windows.
-        mss/screencapture -R grab whatever is visually on screen at the given
-        coordinates, which may be a different app lying on top of WeChat.
-      - The -o flag removes the drop-shadow; the resulting image is exactly
-        2× the logical window size on Retina (scale=2.0) displays.
-      - screencapture is a passive read — it does NOT touch System Events and
-        does NOT cause WeChat to lose focus (unlike osascript/JXA).
-
-    Coordinate mapping:
-      The Swift OCR binary divides Vision pixel coords by NSScreen.backingScaleFactor
-      (2.0 on Retina), returning logical coords within the window.
-      Adding the stored window (x, y) offset converts them to absolute screen coords.
     """
-    profile.get("_window_id")
-    bounds = profile.get("_window_bounds", {})
-    int(bounds.get("x", 0))
-    int(bounds.get("y", 0))
-
-    # Use mss to capture the screen region.
-    # We DO NOT use screencapture -l <id> because on macOS, WeChat renders
-    # the search dropdown in a separate NSWindow. Capturing the main window ID
-    # excludes the dropdown entirely.
-    # Fallback: mss window crop using stored bounds
     import utils
 
+    wid = profile.get("_window_id")
+    bounds = profile.get("_window_bounds", {})
+    x_off = int(bounds.get("x", 0))
+    y_off = int(bounds.get("y", 0))
+    if wid:
+        return utils.capture_window_by_id(wid, x_off, y_off)
     return utils.capture_screen(bounds=bounds)
 
 

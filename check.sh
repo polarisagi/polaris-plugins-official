@@ -190,7 +190,7 @@ else
     # shellcheck disable=SC2086
     safety_out=$(safety check $reqs_arg --short-report 2>&1 || true)
 
-    if echo "$safety_out" | grep -q "No known security vulnerabilities found"; then
+    if echo "$safety_out" | grep -qiE "No known security vulnerabilities"; then
       echo "$safety_out"
       pass "Safety 未发现依赖漏洞 ${label}"
     else
@@ -198,7 +198,7 @@ else
       if $AUTOFIX; then
         # 提取有漏洞的包名（格式：-> package_name ）
         VULN_PKGS=$(echo "$safety_out" \
-          | grep -oE '-> [a-zA-Z0-9_-]+' \
+          | grep -oE -- '-> [a-zA-Z0-9_-]+' \
           | awk '{print $2}' \
           | sort -u \
           | tr '\n' ' ' || true)

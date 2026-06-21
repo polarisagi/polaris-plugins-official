@@ -7,10 +7,7 @@ import tempfile
 import utils
 from utils import mouse, Button
 
-try:
-    import mss
-except ImportError:
-    pass
+import mss
 
 
 def handle_click_element_by_id(args):
@@ -83,7 +80,9 @@ def _click_by_jxa(elem_name: str, match_index: int) -> tuple[int, int] | None:
     }}
     """
     out = (
-        subprocess.check_output(["osascript", "-l", "JavaScript", "-e", jxa], timeout=10)
+        subprocess.check_output(
+            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=10
+        )
         .decode()
         .strip()
     )
@@ -98,9 +97,19 @@ def _click_by_ocr(elem_name: str, match_index: int) -> tuple[int, int]:
     base = os.path.join(os.path.dirname(__file__), "..")
     swift_exe = os.path.join(base, "find_text_on_screen")
     if not os.path.exists(swift_exe):
-        subprocess.run(["swiftc", os.path.join(base, "find_text_on_screen.swift"), "-o", swift_exe], check=True)
+        subprocess.run(
+            [
+                "swiftc",
+                os.path.join(base, "find_text_on_screen.swift"),
+                "-o",
+                swift_exe,
+            ],
+            check=True,
+        )
 
-    tmp_path = os.path.join(tempfile.gettempdir(), f"ocr_temp_{os.urandom(4).hex()}.png")
+    tmp_path = os.path.join(
+        tempfile.gettempdir(), f"ocr_temp_{os.urandom(4).hex()}.png"
+    )
     with mss.MSS() as sct:
         filename = sct.shot(output=tmp_path)
     try:
