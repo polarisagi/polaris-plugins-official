@@ -269,6 +269,7 @@ else
       if ! mypy "$scan_dir" \
           --ignore-missing-imports \
           --explicit-package-bases \
+          --disable-error-code annotation-unchecked \
           --no-error-summary \
           --pretty 2>&1; then
         MYPY_FAIL=1

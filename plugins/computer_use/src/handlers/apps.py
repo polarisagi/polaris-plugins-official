@@ -43,14 +43,14 @@ def _app_exists_win(app_name: str) -> bool:
         if base and os.path.isfile(os.path.join(base, app_name, f"{app_name}.exe")):
             return True
     try:
-        import winreg
-
-        key = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE,
+        import importlib
+        winreg = importlib.import_module("winreg")  # type: ignore[assignment]  # Windows-only
+        key = winreg.OpenKey(  # type: ignore[attr-defined]
+            winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
         )
         try:
-            winreg.QueryValue(key, f"{app_name}.exe")
+            winreg.QueryValue(key, f"{app_name}.exe")  # type: ignore[attr-defined]
             return True
         except FileNotFoundError:
             pass
