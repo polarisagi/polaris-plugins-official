@@ -241,14 +241,47 @@ if $SKIP_MYPY; then
   skipped "Mypy（已通过 -t 跳过）"
 else
   require_tool mypy mypy
-  if mypy "$TARGET" \
-      --ignore-missing-imports \
-      --no-error-summary \
-      --pretty 2>&1; then
+  MYPY_FAIL=0
+  # 每个插件是独立的包，必须在各自目录内单独扫描，
+  # 否则多个 src/main.py 会产生 "Duplicate module named 'main'" 错误。
+  PLUGIN_DIRS=$(find "$TARGET" -maxdepth 2 -name "pyproject.toml" \
+    ! -path "*/.venv/*" 2>/dev/null \
+    | xargs -I{} dirname {} \
+    | sort)
+
+  if [ -z "$PLUGIN_DIRS" ]; then
+    # 根目录本身就是一个包，直接扫描
+    if mypy "$TARGET" \
+        --ignore-missing-imports \
+        --explicit-package-bases \
+        --no-error-summary \
+        --pretty 2>&1; then
+      pass "Mypy 类型检查通过"
+    else
+      MYPY_FAIL=1
+    fi
+  else
+    while IFS= read -r plugin_dir; do
+      src_dir="${plugin_dir}/src"
+      scan_dir="${src_dir:-$plugin_dir}"
+      [ -d "$scan_dir" ] || scan_dir="$plugin_dir"
+      echo -e "${CYAN}   扫描: ${scan_dir}${RESET}"
+      if ! mypy "$scan_dir" \
+          --ignore-missing-imports \
+          --explicit-package-bases \
+          --no-error-summary \
+          --pretty 2>&1; then
+        MYPY_FAIL=1
+      fi
+    done <<< "$PLUGIN_DIRS"
+  fi
+
+  if [ "$MYPY_FAIL" -eq 0 ]; then
     pass "Mypy 类型检查通过"
   else
     fail "Mypy 发现类型错误"
   fi
+
 fi
 
 # ── 5. Radon — 复杂度 ─────────────────────────────────────────────────────────
