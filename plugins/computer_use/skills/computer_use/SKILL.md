@@ -1,6 +1,6 @@
 ---
 name: computer_use
-description: "Decision guide for the computer MCP tool — universal desktop automation with layered operations."
+description: "Decision guide for the computer_use MCP tools (computer_core, computer_apps, computer_macro) — universal desktop automation with layered operations."
 version: "1.0.0"
 tags:
   - computer-use
@@ -14,14 +14,15 @@ capability: read-write
 
 ## 1. Architecture
 
-The `computer` tool has two layers:
+The `computer_use` plugin exposes three tools with two logical layers:
 
-| Layer | When to use | Operations |
-|-------|-------------|------------|
-| **High-level** | Known app with a profile in `src/profiles/` | `send_message_to` |
-| **Low-level** | Any app, any situation | `open_app`, `get_ui_tree`, `click_element_by_name`, `focus_input`, `clear_and_type`, `type`, `key`, `screenshot`, mouse actions |
+| Layer | Tool | When to use | Key Operations |
+|-------|------|-------------|----------------|
+| **High-level** | `computer_macro` | Known app with a profile in `src/profiles/` | `send_message_to`, `send_file_to`, `read_messages_from`, `computer_batch` |
+| **Mid-level** | `computer_apps` | App lifecycle management | `open_app`, `quit_app`, `close_window`, `get_running_apps` |
+| **Low-level** | `computer_core` | Any app, any situation | `screenshot`, `get_ui_tree`, `click_element_by_name`, `type`, `key`, mouse actions |
 
-**Rule:** always prefer a high-level op when one exists. Fall back to low-level primitives for apps that have no profile, or for tasks that don't match any high-level op.
+**Rule:** always prefer a higher-level tool when one exists. Fall back to `computer_core` low-level primitives for apps without a profile, or tasks not covered by macros.
 
 ---
 
@@ -61,18 +62,19 @@ Coordinates are logical screen pixels — pass directly to `left_click`.
 ```
 Task involves sending a message?
   └─ Yes → Is the app in the known profile list?
-              └─ Yes → send_message_to  (single call, handles everything)
-              └─ No  → low-level loop: open_app → get_ui_tree → click/type → verify
+              └─ Yes → computer_macro: send_message_to  (single call, handles everything)
+              └─ No  → computer_apps: open_app
+                        → computer_core: get_ui_tree → click/type → verify
   └─ No  → Multimodal model?
-              └─ Yes → open_app → screenshot → interact → verify
-              └─ No  → open_app → get_screen_state → click by coords → get_screen_state → verify
+              └─ Yes → computer_apps: open_app → computer_core: screenshot → interact → verify
+              └─ No  → computer_apps: open_app → computer_core: get_screen_state → click by coords → verify
 ```
 
 ---
 
 ## 4. Sending a Message (High-Level)
 
-Use `send_message_to` for any chat app that has a profile in `src/profiles/`:
+Use `computer_macro` with `send_message_to` for any chat app that has a profile in `src/profiles/`:
 
 ```jsonc
 {
@@ -100,21 +102,23 @@ Use `send_message_to` for any chat app that has a profile in `src/profiles/`:
 
 ---
 
-## 4. Low-Level Workflow (any app)
+## 4. Low-Level Workflow (`computer_apps` + `computer_core`)
 
 Use this for apps without a profile, or for interactions that aren't "send a message":
 
 ```
-1. open_app      — launch / focus the target application
-2. get_ui_tree   — inspect accessibility elements as JSON
-3. click_element_by_name / left_click — interact with elements
-4. type / clear_and_type / key — enter text or trigger shortcuts
-5. screenshot / get_ui_tree   — verify the result
+1. computer_apps: open_app      — launch / focus the target application
+2. computer_core: get_ui_tree   — inspect accessibility elements as JSON
+3. computer_core: click_element_by_name / left_click — interact with elements
+4. computer_core: type / clear_and_type / key — enter text or trigger shortcuts
+5. computer_core: screenshot / get_ui_tree   — verify the result
 ```
 
 **Example: open VS Code and trigger Command Palette**
 ```jsonc
+// Tool: computer_apps
 { "action": "open_app", "app_name": "Visual Studio Code" }
+// Tool: computer_core
 { "action": "key", "text": "cmd+shift+p" }
 { "action": "clear_and_type", "text": "Git: Commit" }
 { "action": "key", "text": "enter" }

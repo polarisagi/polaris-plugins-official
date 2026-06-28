@@ -233,7 +233,8 @@ def osa_send_key(proc_name: str, shortcut: str) -> bool:
         stmt = f"keystroke {json.dumps(key)}{mod_clause}"
     else:
         return False
-    script = f'tell application "System Events" to tell process "{proc_name}" to {stmt}'
+    js_proc = json.dumps(proc_name)
+    script = f'tell application "System Events" to tell process {js_proc} to {stmt}'
     try:
         return (
             subprocess.run(
@@ -310,18 +311,21 @@ def ensure_frontmost(
             if bundle_id:
                 subprocess.run(["open", "-b", bundle_id], capture_output=True)
             else:
+                js_open = json.dumps(open_name)
                 subprocess.run(
-                    ["osascript", "-e", f'tell application "{open_name}" to activate'],
+                    ["osascript", "-e", f"tell application {js_open} to activate"],
                     capture_output=True,
                 )
             # Force frontmost via System Events if bundleId can be resolved
+            js_open = json.dumps(open_name)
             jxa = f"""
             try {{
-                const bundleId = Application("{open_name}").id();
+                const jsOpen = {js_open};
+                const bundleId = Application(jsOpen).id();
                 if (bundleId) {{
                     Application('System Events').processes.whose({{bundleIdentifier: bundleId}})[0].frontmost = true;
                 }} else {{
-                    Application('System Events').processes.whose({{name: "{open_name}"}})[0].frontmost = true;
+                    Application('System Events').processes.whose({{name: jsOpen}})[0].frontmost = true;
                 }}
             }} catch(e) {{}}
             """

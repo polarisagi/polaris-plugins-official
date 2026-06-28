@@ -1,4 +1,0 @@
-{
-    "allowed_apps": ["*"],
-    "blocked_apps": ["1Password", "Keychain Access", "System Settings", "Bitwarden", "Enpass", "LastPass"]
-}

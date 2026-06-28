@@ -706,7 +706,7 @@ def get_platform_skill(platform: str) -> str:
         return f"No specific guidelines found for '{platform}'."
     src_dir = os.path.dirname(os.path.abspath(__file__))
     plugin_dir = os.path.dirname(src_dir)
-    path = os.path.join(plugin_dir, "skills", skill_map[platform])
+    path = os.path.join(plugin_dir, "skills", "social_poster", skill_map[platform])
     try:
         with open(path, encoding="utf-8") as f:
             return f.read()

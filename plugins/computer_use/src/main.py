@@ -16,7 +16,7 @@ Architecture:
 import sys
 import json
 
-from schema import TOOL_SCHEMA
+from schema import TOOL_SCHEMAS
 from handlers import (
     handle_screenshot,
     handle_get_screen_state,
@@ -60,7 +60,9 @@ def check_app_permission(app_name):
         return True
     import os
 
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    config_dir = os.path.expanduser("~/.config/polaris-computer-mcp")
+    os.makedirs(config_dir, exist_ok=True)
+    config_path = os.path.join(config_dir, "config.json")
 
     # 默认配置
     default_config = {
@@ -214,7 +216,12 @@ def _inject_routing_hint(action, app_name, result):
 
 def _handle_tools_call(req_id, params):
     """Execute a tools/call request and send the result."""
-    if params.get("name") != "computer":
+    if params.get("name") not in (
+        "computer_core",
+        "computer_apps",
+        "computer_macro",
+        "computer",  # Legacy: backward-compat alias. Remove in next major version.
+    ):
         _send_error(req_id, -32601, "Tool not found")
         return
 
@@ -263,8 +270,10 @@ def main():
                 )
             elif method == "ping":
                 _send_result(req_id, {})
+            elif method == "notifications/initialized" or method == "initialized":
+                pass  # Standard MCP initialized notification
             elif method == "tools/list":
-                _send_result(req_id, {"tools": [TOOL_SCHEMA]})
+                _send_result(req_id, {"tools": TOOL_SCHEMAS})
             elif method == "tools/call":
                 _handle_tools_call(req_id, req.get("params", {}))
             else:

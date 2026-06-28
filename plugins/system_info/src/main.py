@@ -129,7 +129,7 @@ def main():
                 _send_result(
                     req_id,
                     {
-                        "protocolVersion": "2024-11-05",
+                        "protocolVersion": "2025-11-25",
                         "capabilities": {"tools": {}},
                         "serverInfo": {
                             "name": "polaris-systeminfo-mcp",
@@ -139,6 +139,8 @@ def main():
                 )
             elif method == "ping":
                 _send_result(req_id, {})
+            elif method == "notifications/initialized" or method == "initialized":
+                pass  # Standard MCP initialized notification
             elif method == "tools/list":
                 _send_result(req_id, {"tools": TOOLS})
             elif method == "tools/call":

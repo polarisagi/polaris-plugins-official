@@ -1,7 +1,7 @@
 [project]
 name = "knowledge-base"
 version = "0.1.0"
-description = "Add your description here"
+description = "Polaris MCP plugin: Provides safe, sandboxed access to local files and directories for RAG purposes."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []
