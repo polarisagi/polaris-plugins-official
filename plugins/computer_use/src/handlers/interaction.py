@@ -47,97 +47,37 @@ def handle_click_element_by_id(args):
     ]
 
 
-def _click_by_jxa(elem_name: str, match_index: int) -> tuple[int, int] | None:
-    """Try to find element via JXA accessibility tree. Returns (x, y) or None."""
-    js_name = json.dumps(elem_name)
-    js_idx = int(match_index)
-    jxa = f"""
-    function run() {{
-        const se = Application('System Events');
-        const procs = se.processes.whose({{ frontmost: true }})();
-        if (!procs.length) return "Not found";
-        const win = procs[0].windows()[0];
-        const needle = {js_name};
-        let matches = [];
-        function traverse(el, depth) {{
-            if (depth > 6) return;
-            try {{
-                const name = el.name();
-                if (name && name.indexOf(needle) !== -1) {{
-                    const pos = el.position(), sz = el.size();
-                    if (pos && sz) matches.push({{x: Math.round(pos[0]+sz[0]/2),
-                                                   y: Math.round(pos[1]+sz[1]/2)}});
-                }}
-                const kids = el.uiElements();
-                for (let i = 0; i < kids.length; i++) traverse(kids[i], depth + 1);
-            }} catch(e) {{}}
-        }}
-        if (win) traverse(win, 0);
-        if (!matches.length) return "Not found";
-        const idx = {js_idx} < 0 ? matches.length + {js_idx} : {js_idx};
-        const m = matches[Math.min(Math.max(idx, 0), matches.length - 1)];
-        return m.x + "," + m.y;
-    }}
-    """
-    out = (
-        subprocess.check_output(
-            ["osascript", "-l", "JavaScript", "-e", jxa], timeout=10
-        )
-        .decode()
-        .strip()
-    )
-    if out == "Not found":
-        return None
-    x, y = map(int, out.split(","))
-    return x, y
-
-
 def _click_by_ocr(elem_name: str, match_index: int) -> tuple[int, int]:
     """Find element via Swift OCR fallback. Returns (x, y) or raises."""
-    base = os.path.join(os.path.dirname(__file__), "..")
-    swift_exe = os.path.join(base, "find_text_on_screen")
-    if not os.path.exists(swift_exe):
-        subprocess.run(
-            [
-                "swiftc",
-                os.path.join(base, "find_text_on_screen.swift"),
-                "-o",
-                swift_exe,
-            ],
-            check=True,
-        )
-
+    import ocr
+    
     tmp_path = os.path.join(
         tempfile.gettempdir(), f"ocr_temp_{os.urandom(4).hex()}.png"
     )
     with mss.MSS() as sct:
         filename = sct.shot(output=tmp_path)
     try:
-        ocr_out = (
-            subprocess.check_output([swift_exe, filename, elem_name], timeout=15)
-            .decode()
-            .strip()
-        )
+        all_text_blocks = ocr.get_all_ocr_text(filename)
     finally:
         if os.path.exists(filename):
             os.remove(filename)
 
-    if not ocr_out or "Failed" in ocr_out:
-        raise Exception(f"Element '{elem_name}' not found (OCR failed)")
-    lines = [ln for ln in ocr_out.split("\n") if "," in ln]
-    if not lines:
+    if not all_text_blocks:
+        raise Exception(f"Element '{elem_name}' not found (OCR failed or no text)")
+        
+    matches = [b for b in all_text_blocks if elem_name in b["text"]]
+    if not matches:
         raise Exception(f"Element '{elem_name}' not found on screen")
-    idx = match_index if match_index >= 0 else max(0, len(lines) + match_index)
-    x, y = map(float, lines[min(idx, len(lines) - 1)].split(","))
-    return int(x), int(y)
+        
+    # matches are already sorted top-to-bottom by describe_screen.swift
+    idx = match_index if match_index >= 0 else max(0, len(matches) + match_index)
+    match = matches[min(idx, len(matches) - 1)]
+    return match["mid_x"], match["mid_y"]
 
 
 def _click_darwin(elem_name: str, match_index: int) -> tuple[int, int]:
-    """macOS: try JXA first, fall back to OCR."""
-    coords = _click_by_jxa(elem_name, match_index)
-    if coords is None:
-        coords = _click_by_ocr(elem_name, match_index)
-    return coords
+    """macOS: use OCR for absolute reliability without focus stealing."""
+    return _click_by_ocr(elem_name, match_index)
 
 
 def _click_windows(elem_name: str, match_index: int) -> tuple[int, int]:

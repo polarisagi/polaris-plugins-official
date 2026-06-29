@@ -310,10 +310,12 @@ def handle_send_message_to(args):
     utils.clipboard_type(contact_name)
     time.sleep(wait_search)
 
+    contact_type = args.get("contact_type", "any").lower()
+
     # Step 4 — select result
-    _log(f"[4] Selecting '{contact_name}'")
+    _log(f"[4] Selecting '{contact_name}' ({contact_type})")
     adapter.select_search_result(
-        contact_name, search_sect, profile, proc_name, plat, _log
+        contact_name, search_sect, profile, proc_name, plat, _log, contact_type
     )
     time.sleep(wait_chat + 0.5)
 

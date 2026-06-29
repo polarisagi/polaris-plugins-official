@@ -91,6 +91,9 @@ Use `computer_macro` with `send_message_to` for any chat app that has a profile 
 |-----|---------|
 | WeChat / 微信 | `微信`, `wechat` |
 | Slack | `slack` |
+
+> [!WARNING]
+> **WeChat Limitations**: The WeChat adapter currently **ONLY supports** searching and sending messages to **Contacts (联系人)** and **Group Chats (群聊)**. It does **NOT support** Official Accounts (公众号), Mini Programs (小程序), or other entities. When a name is ambiguous, use the `contact_type` parameter ('contact' or 'group') to disambiguate.
 | 飞书 / Lark | `飞书`, `lark`, `feishu` |
 | 钉钉 / DingTalk | `钉钉`, `dingtalk` |
 | Telegram | `telegram` |
@@ -172,6 +175,6 @@ Special keys: `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `up`, `down
 
 ## 9. Platform Notes
 
-- **macOS**: keyboard operations in `send_message_to` are sent directly to the target process via AppleScript (`tell process X to keystroke`), bypassing focus — the target app does not need to remain frontmost.
+- **macOS**: `send_message_to` for WeChat uses a pure-visual OCR + coordinate-based approach to prevent focus-stealing bugs native to the macOS Accessibility tree.
 - **Windows**: uses `pywinauto` for UI tree and element interaction.
 - **Linux**: uses `pyatspi` for accessibility tree access.

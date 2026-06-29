@@ -160,8 +160,9 @@ TOOL_SCHEMA_MACRO = {
         "CRITICAL RULES:\n"
         "1. MACRO PREFERENCE: For apps with dedicated macro support (e.g. WeChat, Slack, Lark, DingTalk, Telegram, QQ), "
         "you MUST use 'send_message_to' instead of manual computer_core clicks. It is far more reliable.\n"
-        "2. SUPPORTED APPS: Supported chat apps are defined in src/profiles/. Aliases work case-insensitively (e.g. '微信', 'wechat').\n"
-        "3. BATCH: Use 'computer_batch' to execute multiple actions atomically in a single call."
+        "2. WECHAT LIMITATION: The WeChat adapter currently ONLY supports searching and sending to Contacts (联系人) and Group Chats (群聊). It does NOT support Official Accounts (公众号), Mini Programs (小程序), or other entities.\n"
+        "3. SUPPORTED APPS: Supported chat apps are defined in src/profiles/. Aliases work case-insensitively (e.g. '微信', 'wechat').\n"
+        "4. BATCH: Use 'computer_batch' to execute multiple actions atomically in a single call."
     ),
     "inputSchema": {
         "type": "object",
@@ -176,7 +177,7 @@ TOOL_SCHEMA_MACRO = {
                 ],
                 "description": (
                     "Action to perform:\n"
-                    "• send_message_to — Send a chat message to a contact or group in a supported app. Requires app, contact_name, message.\n"
+                    "• send_message_to — Send a chat message to a contact or group in a supported app. Requires app, contact_name, message. (Note: WeChat supports Contacts/Groups only).\n"
                     "• send_file_to — Send a file to a contact or group in a supported app. Requires app, contact_name, file_path.\n"
                     "• read_messages_from — Read recent messages from a contact or group. Requires app, contact_name, count.\n"
                     "• computer_batch — Execute a list of computer_core/computer_apps actions in sequence. Requires actions array."
@@ -189,6 +190,11 @@ TOOL_SCHEMA_MACRO = {
             "contact_name": {
                 "type": "string",
                 "description": "Contact or group chat name for chat macros.",
+            },
+            "contact_type": {
+                "type": "string",
+                "enum": ["any", "contact", "group"],
+                "description": "Specify the target type if the name is ambiguous. 'contact' (联系人) or 'group' (群聊). Defaults to 'any'. (Note: WeChat adapter strictly requires the target to be a contact or a group).",
             },
             "message": {
                 "type": "string",

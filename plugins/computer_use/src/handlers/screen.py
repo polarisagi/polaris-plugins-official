@@ -193,7 +193,19 @@ def _collect_ocr_text(app_name: str, lines: list, id_map: dict, start_id: int) -
         lines.append("\n=== Screen Text (OCR) ===")
         for ocr_line in ocr_raw.splitlines()[:100]:
             parts = ocr_line.split("|")
-            if len(parts) == 3:
+            if len(parts) >= 4:
+                text = parts[0]
+                abs_x = int(float(parts[2])) + x_off  # use midX
+                abs_y = int(float(parts[3])) + y_off  # use midY
+                id_map[str(current_id)] = {
+                    "x": abs_x,
+                    "y": abs_y,
+                    "type": "OCR",
+                    "text": text,
+                }
+                lines.append(f'[{current_id}] "{text}"')
+                current_id += 1
+            elif len(parts) == 3: # Fallback for dev during transition
                 text = parts[0]
                 abs_x = int(float(parts[1])) + x_off
                 abs_y = int(float(parts[2])) + y_off

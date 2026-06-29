@@ -1,12 +1,11 @@
 [project]
 name = "computer-use"
-version = "0.1.0"
+version = "1.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "mss>=10.2.0",
-    "pillow>=12.2.0",
     "pynput>=1.8.2",
     "pyperclip>=1.9.0",
     "pywinauto>=0.6.9 ; sys_platform == 'win32'",
