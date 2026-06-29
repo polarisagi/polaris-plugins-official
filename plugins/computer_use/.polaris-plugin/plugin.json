@@ -1,7 +1,7 @@
 {
   "name": "polaris-computer-use",
   "version": "1.1.0",
-  "description": "Universal desktop automation. Control any desktop application (GUI), operate various installed software including chat software, automate workflows, use keyboard/mouse, and capture screenshots natively via MCP.",
+  "description": "Universal desktop automation with Visual OCR. Control any desktop application (GUI), operate various installed software including chat software, automate workflows, use keyboard/mouse, and capture screenshots via MCP.",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -10,13 +10,13 @@
   "homepage": "https://polarisagi.online/",
   "repository": "https://github.com/polarisagi/polaris-plugins-official",
   "license": "AGPL-3.0",
-  "keywords": ["computer-use", "automation", "desktop-apps", "gui-control", "screenshot", "mcp"],
+  "keywords": ["computer-use", "automation", "desktop-apps", "gui-control", "screenshot", "mcp", "ocr", "vision"],
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
     "displayName": "Computer Use",
     "shortDescription": "Automate any desktop application, control mouse/keyboard, and capture screenshots.",
-    "longDescription": "Allows the AI agent to automate any desktop application via GUI control. It can launch and operate various software installed on the computer, including all kinds of chat software. It can interact with user interfaces, control the computer's mouse and keyboard, and capture screenshots using native OS automation APIs. Built in Python. Cross-platform: macOS, Windows, Linux.",
+    "longDescription": "Allows the AI agent to automate any desktop application via GUI control. It can launch and operate various software installed on the computer, including all kinds of chat software. It can interact with user interfaces, control the computer's mouse and keyboard, and understand screen content using advanced Visual OCR and native OS APIs. Built in Python. Cross-platform: macOS, Windows, Linux.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
