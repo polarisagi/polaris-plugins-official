@@ -10,3 +10,12 @@ bake/
 
 # Go binary
 plugins/knowledge_base/knowledge_base
+
+# Python & caches
+.venv/
+*/.venv/
+.pytest_cache/
+*/.pytest_cache/
+.ruff_cache/
+*/.ruff_cache/
+*.egg-info/

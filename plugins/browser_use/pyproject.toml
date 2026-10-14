@@ -6,5 +6,14 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "mcp>=1.27.2",
-    "playwright>=1.60.0",
+    "patchright>=1.55",
+    "playwright>=1.40.0",
+    "trafilatura>=2.0",
+    "pydantic>=2.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
