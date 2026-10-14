@@ -10,14 +10,13 @@
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import logging
 import os
 import platform
 import shutil
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -276,16 +275,20 @@ class ManagedBackend:
             # 探测 HTTP /json/version 是否可响应
             parsed = urlparse(ws_url)
             port = parsed.port or 9222
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/json/version")
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
+            http_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1.0)
+            try:
+                http_conn.request("GET", "/json/version")
+                resp = http_conn.getresponse()
                 if resp.status == 200:
                     return str(ws_url)
+            finally:
+                http_conn.close()
         except (
             OSError,
             ValueError,
-            urllib.error.URLError,
             TimeoutError,
             json.JSONDecodeError,
+            http.client.HTTPException,
         ) as err:
             logger.debug("复用旧端点探测失败 (%s)，准备清理并重新启动", err)
             try:
