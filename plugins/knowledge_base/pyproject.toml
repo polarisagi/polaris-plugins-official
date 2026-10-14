@@ -1,7 +1,18 @@
 [project]
 name = "knowledge-base"
-version = "0.1.0"
-description = "Polaris MCP plugin: Provides safe, sandboxed access to local files and directories for RAG purposes."
+version = "2.0.0"
+description = "Polaris MCP plugin: Markdown knowledge vault (kb_save/kb_list/kb_search/kb_read/kb_tag/kb_move) with legacy sandboxed file access."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "mcp>=1.27.2,<2",
+    "pydantic>=2.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

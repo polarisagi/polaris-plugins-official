@@ -34,12 +34,11 @@
 **底层驱动**：Python、Patchright 及 `uv`  
 **特点**：免弹窗无人值守扩展中继；已知社交平台请使用 `polaris-social`
 
-### 3. [Knowledge Base (Python)](plugins/knowledge_base)
+### 3. [Knowledge Vault (Python)](plugins/knowledge_base)
 
-**功能**：列出目录内容、读取本地文件（用于 RAG 等）  
-**底层驱动**：Python 原生 `os` 和 `pathlib` 模块  
-**亮点**：纯 Python 编写，零外部依赖，支持 `POLARIS_KB_ALLOWED_DIR` 环境变量进行路径沙盒隔离白名单
-
+**版本**：`v2.0.0`（MCP 服务器 `polaris-knowledge-base`）  
+**能力**：把采集结果与摘要落成带 YAML 元信息头的 Markdown（`kb_save`，按 URL 去重），并提供 `kb_list` / `kb_search` / `kb_read` / `kb_tag` / `kb_move`；保留旧工具 `list_files` / `read_content`  
+**亮点**：默认资料库 `~/Polaris/Vault`（`POLARIS_VAULT_DIR`）、Obsidian 兼容、SQLite FTS5 全文检索、写入严格限定在资料库目录内
 
 ### 4. [Social (Python)](plugins/social)
 
@@ -70,11 +69,11 @@
     },
     "polaris-browser-use": {
       "command": "uv",
-      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/browser_use/src/main.py"]
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_use", "python", "-m", "src.main"]
     },
     "polaris-knowledge-base": {
       "command": "uv",
-      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base/src/main.py"],
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base", "python", "-m", "src.main"],
       "env": { "POLARIS_KB_ALLOWED_DIR": "/your/allowed/dir" }
     }
   }

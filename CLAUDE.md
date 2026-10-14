@@ -13,7 +13,7 @@
 ```bash
 uv run plugins/computer_use/src/main.py
 uv run plugins/browser_use/src/main.py
-uv run plugins/knowledge_base/src/main.py
+(cd plugins/knowledge_base && uv run python -m src.main)
 uv run plugins/system_info/src/main.py
 (cd plugins/social && uv run python -m src.main)
 ```
@@ -59,8 +59,8 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 - `skills/<插件名>/SKILL.md` — 随插件下发给 Agent 的使用决策指南（必须在二级子目录内）
 
 **MCP 实现方式：**
-- 手动 stdio 循环（`sys.stdin`）：`computer_use`、`knowledge_base`、`system_info`
-- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_use`、`social`
+- 手动 stdio 循环（`sys.stdin`）：`computer_use`、`system_info`
+- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_use`、`social`、`knowledge_base`
 
 ---
 
@@ -101,9 +101,9 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 ---
 
-### knowledge_base — 本地文件 RAG 插件
+### knowledge_base — 资料库（Vault，v2.0.0）
 
-零外部依赖。通过 `POLARIS_KB_ALLOWED_DIR` 环境变量限制文件访问路径（不设则不限制）。暴露 `list_files` 和 `read_content` 两个工具。
+`FastMCP` 实现，MCP 服务器名保持 `polaris-knowledge-base`（内核写入白名单按 `mcp__polaris-knowledge-base__kb_save`）。核心在 `src/vault.py`（纯标准库）：把文档落成带 YAML front matter 的 Markdown（默认 `~/Polaris/Vault`，由 `POLARIS_VAULT_DIR` 覆盖，Obsidian 兼容），按规范化 URL 去重，SQLite（WAL + FTS5，CJK 逐字切分）索引在 `<vault>/.polaris/index.sqlite`。所有路径 `resolve()` 后必须位于资料库内，拒绝 `..` 与符号链接越界。工具：`kb_save`（幂等、非破坏性）、`kb_list`、`kb_search`、`kb_read`、`kb_tag`、`kb_move`，以及保持原行为的旧工具 `list_files`、`read_content`（受 `POLARIS_KB_ALLOWED_DIR` 约束）。内核以 ObsidianConnector 同步资料库目录入 RAG，插件不做入库逻辑。
 
 ---
 
@@ -118,7 +118,7 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 使用 `FastMCP` + Patchright，复用 `utils/browser_hub.py`（与 browser_use 逐字节一致，`check.sh` 校验）。读与写同处一个插件，**按平台共享限速与风控熔断**（`src/ratelimit.py`，SQLite 跨进程；`src/gate.py` 把写工具接入同一把键，`twitter` 与读侧的 `x` 同键）。
 
 - **读工具**（`readOnlyHint` + `openWorldHint`）：`social_platforms`、`social_search`、`social_hot`、`social_feed`、`social_read`、`social_selftest`。平台为配方站点枚举 `zhihu`/`x`/`weibo`/`xiaohongshu`（`recipes/*.toml`，XHR 拦截优先、CSS 兜底），配方缺动作返回 `unsupported_action`。采集引擎在 `src/harvest/`，工具实现在 `src/tools_social.py`。
-- **写工具**：`auto_post`、`batch_post`、`post_video`、`post_thread`、`like_post` 等 29 个原有工具，声明 `readOnlyHint=False, destructiveHint=True`；执行前经 `rate_limited_write` 占用名额，被限速时返回错误码而不执行。无配方平台使用保守默认限速（10 秒间隔、20 次/小时、60 次/天）。
+- **写工具**：`auto_post`、`batch_post`、`post_video`、`post_thread`、`like_post` 等原有工具，声明 `readOnlyHint=False, destructiveHint=True`；执行前经 `rate_limited_write` 占用名额，被限速时返回错误码而不执行。无配方平台使用保守默认限速（10 秒间隔、20 次/小时、60 次/天）。
 - 支持写入的平台：`twitter`、`instagram`、`facebook`、`weibo`、`xiaohongshu`、`douyin`、`wechat`、`tiktok`、`linkedin`、`threads`。每个平台有独立 Adapter（`src/adapters/`）；调用写工具前**必须先执行 `get_platform_skill(platform)`**。
 - 技能文件位于 `skills/social/`（入口 `SKILL.md`，平台规范 `*_skill.md`）。
 - 真机冒烟：`cd plugins/social && POLARIS_BROWSER_BACKEND=cdp uv run python scripts/live_smoke.py | tee /tmp/live_smoke.log`（只读、单连接）。

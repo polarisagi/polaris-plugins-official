@@ -34,12 +34,11 @@
 **Powered by**: Python, Patchright and `uv`  
 **Highlights**: Unattended extension bridge; for known social platforms use `polaris-social`
 
-### 3. [Knowledge Base (Python)](plugins/knowledge_base)
+### 3. [Knowledge Vault (Python)](plugins/knowledge_base)
 
-**Capabilities**: List directory contents, read file content for RAG  
-**Drivers**: Native Python `os` and `pathlib` modules  
-**Highlights**: Pure Python, zero external dependencies; `POLARIS_KB_ALLOWED_DIR` env var for path sandboxing
-
+**Version**: `v2.0.0` (MCP server `polaris-knowledge-base`)  
+**Capabilities**: Save collected results and digests as Markdown with YAML front matter (`kb_save`, de-duplicated by URL), plus `kb_list` / `kb_search` / `kb_read` / `kb_tag` / `kb_move`; legacy `list_files` / `read_content` kept  
+**Highlights**: Default vault `~/Polaris/Vault` (`POLARIS_VAULT_DIR`), Obsidian-compatible, SQLite FTS5 search, strictly sandboxed writes
 
 ### 4. [Social (Python)](plugins/social)
 
@@ -70,11 +69,11 @@ Add to `~/.claude.json`:
     },
     "polaris-browser-use": {
       "command": "uv",
-      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/browser_use/src/main.py"]
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_use", "python", "-m", "src.main"]
     },
     "polaris-knowledge-base": {
       "command": "uv",
-      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base/src/main.py"],
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base", "python", "-m", "src.main"],
       "env": { "POLARIS_KB_ALLOWED_DIR": "/your/allowed/dir" }
     }
   }

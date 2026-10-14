@@ -1,7 +1,7 @@
 {
   "name": "polaris-knowledge-base",
-  "version": "1.0.0",
-  "description": "Read local files and list directory contents for Retrieval-Augmented Generation (RAG) via MCP.",
+  "version": "2.0.0",
+  "description": "资料库：把采集结果与摘要落成带 YAML 元信息头的 Markdown（Obsidian 兼容），按 URL 去重，支持全文检索、标签与整理。",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -10,23 +10,33 @@
   "homepage": "https://polarisagi.online/",
   "repository": "https://github.com/polarisagi/polaris-plugins-official",
   "license": "AGPL-3.0",
-  "keywords": ["knowledge-base", "rag", "file-system", "mcp"],
+  "keywords": [
+    "knowledge-base",
+    "vault",
+    "markdown",
+    "obsidian",
+    "rag",
+    "mcp"
+  ],
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
-    "displayName": "Knowledge Base",
-    "shortDescription": "Read local files and list directories for RAG.",
-    "longDescription": "Allows the AI agent to scan the local file system and read document content for Retrieval-Augmented Generation. Built in pure Python with zero external dependencies.\n\nSecurity: Set POLARIS_KB_ALLOWED_DIR env var to restrict accessible paths.\nRequires: Python 3.10+.",
+    "displayName": "Polaris 资料库（Knowledge Vault）",
+    "shortDescription": "把采集与摘要存成 Markdown 资料库，按 URL 去重，可检索。",
+    "longDescription": "把采集结果与摘要落成带 YAML front matter 的 Markdown 文件（默认 ~/Polaris/Vault，Obsidian 兼容），按 URL 去重，提供 kb_save / kb_list / kb_search / kb_read / kb_tag / kb_move。写入严格限定在资料库目录内；内核会把该目录同步进知识库检索。同时保留旧工具 list_files / read_content。\n\nSecurity: 路径解析后必须位于资料库内；POLARIS_KB_ALLOWED_DIR 仅约束旧工具。\nRequires: Python ≥3.14.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
-    "capabilities": ["Read"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://polarisagi.online/",
     "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
     "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
     "defaultPrompt": [
-      "List all files in my documents folder.",
-      "Read the content of README.md in the project root.",
-      "Find all markdown files in the current directory."
+      "把这篇文章存进资料库并打上 ai 标签。",
+      "在资料库里搜索关于 Agent 评估的笔记。",
+      "列出本周保存的所有摘要。"
     ]
   }
 }
