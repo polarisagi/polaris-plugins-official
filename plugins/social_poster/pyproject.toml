@@ -8,5 +8,6 @@ dependencies = [
     "mcp>=1.27.2",
     "patchright>=1.55",
     "playwright>=1.40.0",
+    "websockets>=13.0",
 ]
 

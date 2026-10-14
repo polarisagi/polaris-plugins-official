@@ -124,6 +124,76 @@ async def execute_step(
         await asyncio.sleep(delay)
 
 
+async def _check_login_state(
+    hub: Any, page: Page, site_id: str, check_spec: Any
+) -> None:
+    """探测并缓存当前站点的登录态。"""
+    cached_login = hub._cached_site_logins.get(site_id)
+    if cached_login is not None:
+        return
+    try:
+        el = await page.query_selector(check_spec.logged_in_selector)
+        logged_in = el is not None
+        hub.set_cached_login(site_id, logged_in)
+        if not logged_in:
+            raise HubError(
+                "not_logged_in",
+                f"站点 {site_id} 尚未处于已登录状态，请先在 Chrome 中登录该平台",
+            )
+    except HubError:
+        raise
+    except (PwError, OSError) as e:
+        logger.debug("探测登录态异常: %s", e)
+
+
+def _extract_xhr_items(
+    captured_json: list[Any], xhr_spec: XhrExtract
+) -> list[dict[str, Any]]:
+    """从拦截到的 JSON 数据流中按点路径抽取结构化字段。"""
+    items: list[dict[str, Any]] = []
+    for payload in captured_json:
+        matched_list = get_dot_path(payload, xhr_spec.items)
+        if isinstance(matched_list, list):
+            for raw in matched_list:
+                item: dict[str, Any] = {}
+                for k, dot_path in xhr_spec.fields.items():
+                    item[k] = get_dot_path(raw, dot_path)
+                items.append(item)
+    return items
+
+
+async def _extract_content(
+    page: Page, action: Action, captured_json: list[Any], max_items: int
+) -> list[dict[str, Any]]:
+    """按配方首选方案与备用降级方案抽取数据列表。"""
+    raw_items: list[dict[str, Any]] = []
+    if isinstance(action.extract, XhrExtract):
+        if not captured_json:
+            await asyncio.sleep(1.0)
+        raw_items = _extract_xhr_items(captured_json, action.extract)
+    elif isinstance(action.extract, CssExtract):
+        css_spec: CssExtract = action.extract
+        extracted = await extract_structured(
+            page,
+            container=css_spec.container,
+            fields=css_spec.fields,
+            max_items=max_items,
+        )
+        raw_items = extracted.get("items", [])
+
+    if not raw_items and action.extract_fallback:
+        logger.info("首选提取结果为空，启动 CSS 降级方案")
+        fb_spec = action.extract_fallback
+        extracted = await extract_structured(
+            page,
+            container=fb_spec.container,
+            fields=fb_spec.fields,
+            max_items=max_items,
+        )
+        raw_items = extracted.get("items", [])
+    return raw_items
+
+
 async def run_harvest(
     recipe: Recipe,
     action_name: str,
@@ -143,9 +213,9 @@ async def run_harvest(
     # 1. 站点频次与风控准入
     await acquire(site_id, recipe.limits)
 
-    # 2. 获取无人值守工作页
+    # 2. 获取无人值守工作页并在页面锁保护下执行
     hub = await get_hub()
-    page = await hub.page(unattended=True)
+    await hub.page_lock.acquire()
 
     captured_json: list[Any] = []
 
@@ -163,80 +233,28 @@ async def run_harvest(
             logger.debug("解析拦截响应异常: %s", e)
 
     is_xhr = isinstance(action.extract, XhrExtract)
-    if is_xhr:
-        page.on("response", on_response)
 
     try:
+        page = await hub.page(unattended=True)
+        if is_xhr:
+            page.on("response", on_response)
+
         # 4. 依次执行各个动作步骤
         for step in action.steps:
             await execute_step(
                 page, step, call_params, action, recipe.block_signals, site_id
             )
 
-        # 5. 登录检查（若配置了 login_check 且尚未确认登录态）
+        # 5. 登录检查
         if recipe.site.login_check:
-            cached_login = hub._cached_site_logins.get(site_id)
-            if cached_login is None:
-                try:
-                    el = await page.query_selector(
-                        recipe.site.login_check.logged_in_selector
-                    )
-                    logged_in = el is not None
-                    hub.set_cached_login(site_id, logged_in)
-                    if not logged_in:
-                        raise HubError(
-                            "not_logged_in",
-                            f"站点 {site_id} 尚未处于已登录状态，请先在 Chrome 中登录该平台",
-                        )
-                except HubError:
-                    raise
-                except (PwError, OSError) as e:
-                    logger.debug("探测登录态异常: %s", e)
+            await _check_login_state(hub, page, site_id, recipe.site.login_check)
 
-        # 6. 数据提取：优先执行首选方案
-        raw_items: list[dict[str, Any]] = []
-
-        if is_xhr:
-            xhr_spec: XhrExtract = action.extract  # type: ignore[assignment]
-            # 稍作等待以接收最后的响应
-            if not captured_json:
-                await asyncio.sleep(1.0)
-
-            for payload in captured_json:
-                matched_list = get_dot_path(payload, xhr_spec.items)
-                if isinstance(matched_list, list):
-                    for raw in matched_list:
-                        item: dict[str, Any] = {}
-                        for k, dot_path in xhr_spec.fields.items():
-                            item[k] = get_dot_path(raw, dot_path)
-                        raw_items.append(item)
-
-        elif isinstance(action.extract, CssExtract):
-            css_spec: CssExtract = action.extract
-            extracted = await extract_structured(
-                page,
-                container=css_spec.container,
-                fields=css_spec.fields,
-                max_items=max_items,
-            )
-            raw_items = extracted.get("items", [])
-
-        # 7. 若提取为空且配置了 CSS 降级备用提取，执行 fallback
-        if not raw_items and action.extract_fallback:
-            logger.info("首选提取结果为空，启动 CSS 降级方案")
-            fb_spec = action.extract_fallback
-            extracted = await extract_structured(
-                page,
-                container=fb_spec.container,
-                fields=fb_spec.fields,
-                max_items=max_items,
-            )
-            raw_items = extracted.get("items", [])
-
-        # 8. 清洗并标准化格式
+        # 6. 数据提取与格式标准化
+        raw_items = await _extract_content(page, action, captured_json, max_items)
         normalized = normalize_items(raw_items, site_id, recipe.site.base_url)
         return normalized[:max_items]
 
     finally:
-        if is_xhr:
+        if is_xhr and "page" in locals():
             page.remove_listener("response", on_response)
+        hub.page_lock.release()

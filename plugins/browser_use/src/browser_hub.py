@@ -392,7 +392,7 @@ class ManagedBackend:
             self.browser = None
 
 
-def select_backend() -> tuple[Backend, str]:
+async def select_backend() -> tuple[Backend, str]:
     """根据环境变量和运行环境自动裁决最适后端。"""
     explicit = os.environ.get(ENV_BACKEND, "auto").strip().lower()
     profile = os.environ.get(ENV_PROFILE, "default").strip()
@@ -403,24 +403,19 @@ def select_backend() -> tuple[Backend, str]:
     if explicit == "managed":
         return ManagedBackend(profile=profile, headless=headless), "explicit_managed"
     if explicit == "extension":
-        # T8b 预留扩展后端入口
-        try:
-            from .bridge_relay import ExtensionBackend
-
-            return ExtensionBackend(), "explicit_extension"
-        except ImportError:
-            raise HubError(
-                "attach_failed", "Polaris Browser Bridge 扩展后端将在 T8b 任务交付"
-            ) from None
-
-    # auto 模式裁决顺序：
-    # 1. 尝试 T8b ExtensionBackend 握手
-    try:
         from .bridge_relay import ExtensionBackend
 
-        ext = ExtensionBackend()
-        # 若已有扩展建立连接则优先使用
-        if getattr(ext, "is_ready", lambda: False)():
+        return ExtensionBackend(), "explicit_extension"
+
+    # auto 模式裁决顺序：
+    # 1. 尝试 T8b ExtensionBackend 握手（启动中继并等待扩展最多 2 秒）
+    try:
+        from .bridge_relay import ExtensionBackend, get_or_start_relay
+
+        relay = await get_or_start_relay()
+        if await relay.wait_for_extension(timeout=2.0):
+            ext = ExtensionBackend()
+            ext.relay = relay
             return ext, "extension_handshake_ready"
     except (ImportError, OSError, RuntimeError):
         pass
@@ -448,6 +443,7 @@ class BrowserHub:
         self.has_window: bool = False
         self.owned_targets: set[str] = set()
         self._lock = asyncio.Lock()
+        self.page_lock = asyncio.Lock()
         self._last_activity = time.time()
         self.driver_name = "patchright"
         self._cached_site_logins: dict[str, bool] = {}
@@ -457,7 +453,7 @@ class BrowserHub:
         if release_env is not None and release_env.strip().isdigit():
             self.idle_release_min = int(release_env.strip())
         else:
-            self.idle_release_min = 0  # cdp 默认不释放
+            self.idle_release_min = 0  # 默认由后端动态指定
 
         # 启动后台空闲守护任务
         self._watchdog_task: asyncio.Task[None] | None = None
@@ -483,9 +479,16 @@ class BrowserHub:
             return
 
         if self.backend is None:
-            self.backend, self.backend_reason = select_backend()
+            self.backend, self.backend_reason = await select_backend()
             if hasattr(self.backend, "set_disconnect_callback"):
                 self.backend.set_disconnect_callback(self._on_browser_disconnected)
+
+            # extension 后端默认空闲 10 分钟自动释放连接与标签
+            if (
+                self.backend.name == "extension"
+                and os.environ.get(ENV_IDLE_RELEASE_MIN) is None
+            ):
+                self.idle_release_min = 10
 
         driver_choice = os.environ.get(ENV_DRIVER, "patchright").strip().lower()
         if driver_choice == "playwright":
@@ -548,6 +551,27 @@ class BrowserHub:
         await self._ensure_connected()
         assert self.browser is not None
 
+        # 扩展后端运行在单标签隔离模式：复用已连接的目标页面
+        if (
+            self.backend
+            and self.backend.name == "extension"
+            and self.browser.contexts
+            and self.browser.contexts[0].pages
+        ):
+            page = self.browser.contexts[0].pages[0]
+            try:
+                s = await page.context.new_cdp_session(page)
+                info = await s.send("Target.getTargetInfo")
+                await s.detach()
+                tid = info.get("targetInfo", {}).get("targetId", "ext-tab")
+                self.owned_targets.add(tid)
+            except (PwError, OSError, RuntimeError):
+                self.owned_targets.add("ext-tab")
+            self.has_window = True
+            if url != "about:blank":
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            return page
+
         # 每次创建新页面都在新窗口打开，彻底杜绝混入用户日常标签页
         cdp = await self.browser.new_browser_cdp_session()
         try:
@@ -574,7 +598,7 @@ class BrowserHub:
             if self.browser is None or not self.browser.is_connected():
                 # 无人值守检查：若当前后端不支持静默连接则拒绝发起连接
                 if self.backend is None:
-                    self.backend, self.backend_reason = select_backend()
+                    self.backend, self.backend_reason = await select_backend()
                     if hasattr(self.backend, "set_disconnect_callback"):
                         self.backend.set_disconnect_callback(
                             self._on_browser_disconnected
@@ -595,6 +619,11 @@ class BrowserHub:
         """创建一个新的专属标签页，与用户日常标签隔离。"""
         self.mark_activity()
         async with self._lock:
+            if self.backend and self.backend.name == "extension":
+                p = await self.page()
+                if url != "about:blank":
+                    await p.goto(url, wait_until="domcontentloaded", timeout=30000)
+                return p
             return await self._create_owned_page_locked(url)
 
     async def owned_pages(self) -> list[Page]:
@@ -606,6 +635,8 @@ class BrowserHub:
                 or not self.browser.contexts
             ):
                 return []
+            if self.backend and self.backend.name == "extension":
+                return [p for p in self.browser.contexts[0].pages if not p.is_closed()]
             res = []
             for p in self.browser.contexts[0].pages:
                 if p.is_closed():
@@ -626,6 +657,13 @@ class BrowserHub:
         """汇总当前 BrowserHub 的运行时状态。"""
         pages = await self.owned_pages()
         connected = self.browser is not None and self.browser.is_connected()
+        try:
+            from .bridge_relay import get_or_create_token
+
+            token = get_or_create_token()
+        except (ImportError, OSError):
+            token = ""
+        ext_dir = str(Path(__file__).resolve().parent.parent / "extension")
         return {
             "backend": self.backend.name if self.backend else "none",
             "reason": self.backend_reason,
@@ -637,6 +675,10 @@ class BrowserHub:
             if self.backend
             else "low",
             "sites": self.get_cached_site_statuses(),
+            "extension_dir": ext_dir,
+            "bridge_token": token,
+            "bridge_token_path": str(CFG / "bridge_token"),
+            "pair_instruction": f"在 Chrome (chrome://extensions) 加载扩展并在选项页粘贴配对令牌: {token}",
         }
 
     async def _idle_watchdog(self) -> None:
