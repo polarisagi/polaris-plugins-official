@@ -1,54 +1,69 @@
-# Polaris Browser Use MCP
+# Polaris Browser Use MCP (v2.0.0)
 
-An official Model Context Protocol (MCP) server plugin for [Polaris](https://polarisagi.online/), providing browser automation via **DOM extraction** and precise element interaction — no screenshot coordinates required.
+Polaris 官方浏览器自动化与结构化采集插件。
+复用你日常已登录的 Chrome 浏览器会话，支持 0 token 网络拦截采集与现代化省 token DOM 快照交互。
 
-## Key Features
+---
 
-- **DOM-Based Automation**: Extracts all interactive elements (links, buttons, inputs) and assigns unique `polaris-id` attributes, eliminating coordinate-guessing hallucination.
-- **CDP Connection**: Connects to an already-running Chrome or Edge browser via Chrome DevTools Protocol (CDP) — no login required. Falls back to launching a new headless=False Chromium instance.
-- **Shadow DOM Support**: Traverses shadow roots for modern web components.
-- **Tab Management**: Open, read, and close browser tabs programmatically.
+## 核心特性
 
-## Architecture
+- **三种后端架构**：
+  1. **Extension 模式 (推荐)**：配合 Polaris Browser Bridge 扩展（MV3），免弹窗，支持全自动无人值守定时采集。
+  2. **CDP Toggle 模式**：通过 Chrome 155+ 的 `chrome://inspect` 远程调试开关即时连接，直接复用用户已登录平台。
+  3. **Managed 模式**：使用系统 Chrome 启动专用 profile（`~/.config/polaris-plugins/browser/profiles/`），支持端点复用与独立运行。
+- **Chrome 136+ 兼容背景**：自 Chrome 136 起，Google 禁用了默认用户目录的 `--remote-debugging-port` 命令行参数。本插件创新性地采用 `DevToolsActivePort` 动态发现与扩展桥接技术，实现零配置安全附着。
+- **严格隐私隔离**：Polaris **只在自己创建的独立窗口内**操作，严禁读取或干扰用户的其他日常标签页。
+- **省 Token 设计**：
+  - `harvest`：已知站点通过配方与网络请求拦截直接获取结构化数据，步骤 0 token 消耗。
+  - `browser_read`：文章智能提取、精简 Markdown、纯文本与超链列表，字符级透明分页。
+  - `browser_snapshot`：参数化精炼语义编码（`e12 button "登录"`），拒绝 raw HTML 倾倒。
+- **跨进程全局限速**：基于 SQLite WAL 跨进程排队控制，支持时间段约束与遭遇验证码时的主动熔断冷却。
 
-Built with **Python**, [FastMCP](https://github.com/jlowin/fastmcp), and **Playwright**. The server connects to the browser once at startup and maintains a persistent page session across all tool calls.
+---
 
-## Usage with Polaris
+## 日常 Chrome 开关开启步骤 (CDP Toggle 模式)
 
-Configure your AI agent with the following MCP server setting:
+1. 打开平时使用的日常 Chrome 浏览器；
+2. 在地址栏输入并回车：`chrome://inspect`；
+3. 确保页面顶部的 **「Discover network targets」** 处于开启状态；
+4. 当首次被 Polaris 附着时，Chrome 顶部会出现「允许远程调试」提示，点击 **「允许」** 即可。
 
-```json
-{
-  "mcpServers": {
-    "polaris-browser-use": {
-      "command": "uv",
-      "args": ["run", "/path/to/polaris-plugins-official/plugins/browser_use/src/main.py"]
-    }
-  }
-}
-```
+> **提示**：如果希望定时任务全自动无人值守执行且不再弹出提示，请安装 Polaris Browser Bridge 扩展。
 
-## Exposed Tools
+---
 
-| Tool | Description |
-|------|-------------|
-| `navigate` | Navigate to a URL |
-| `get_interactive_dom` | Extract all interactive elements with unique `polaris-id` |
-| `action_by_id` | Click, fill, or hover an element by its `polaris-id` |
-| `scroll_page` | Scroll up or down by one viewport |
-| `go_back` | Navigate back in browser history |
-| `close_tab` | Close current tab and switch to previous |
-| `get_page_content` | Get visible text content of the page |
-| `get_current_state` | Get current URL and page title |
+## 运行环境与安装建议
 
-## Requirements
+- **本地桌面环境 (macOS / Windows / Linux)**：推荐安装并日常使用，能够最大化发挥复用已登录社交平台、获取个性化信息的能力。
+- **云端 VPS / 无头服务器环境**：**不建议安装本插件**。无头服务器请直接使用内核内置的 HTTP 数据面工具（`feed_fetch`、`web_fetch`、`web_search`），无需任何浏览器进程与图形界面依赖。
 
-- Python 3.10+
-- `uv` (Astral's Python package manager)
-- Chrome or Edge browser (for CDP connection), **or** Playwright's bundled Chromium
+---
 
-**Install Playwright browsers (first-time setup):**
-```bash
-cd plugins/browser_use
-uv run playwright install chromium
-```
+## 运行时配置目录与环境变量
+
+- **配置根目录**：
+  - macOS / Linux：`~/.config/polaris-plugins/browser/`
+  - Windows：`%APPDATA%\polaris-plugins\browser\`
+- **主要环境变量**：
+  - `POLARIS_BROWSER_BACKEND`：`auto`（默认）| `extension` | `cdp` | `managed`
+  - `POLARIS_BROWSER_DRIVER`：`patchright`（默认）| `playwright`
+  - `POLARIS_BROWSER_PROFILE`：managed 模式下的配置目录名称（默认 `default`）
+  - `POLARIS_BROWSER_HEADLESS`：是否无头运行（默认 `0`）
+  - `POLARIS_BROWSER_IDLE_RELEASE_MIN`：空闲释放分钟数（cdp 默认 `0` 不释放；extension 默认 `10`）
+
+---
+
+## 暴露工具一览
+
+| 工具 | 类型 | 说明 |
+|---|---|---|
+| `browser_open` | 交互 | 打开 URL，支持创建新专属标签或复用工作页 |
+| `browser_read` | 交互 | 省 token 多模式（article/markdown/text/links）阅读与分页 |
+| `browser_snapshot`| 交互 | 提取当前视口或全页可交互元素打标（e<N>） |
+| `browser_act` | 交互 | 对快照元素执行精准点击、输入、按键或回退 |
+| `browser_scroll` | 交互 | 平滑滚动页面并返回位置 |
+| `browser_extract` | 交互 | 基于 CSS 选择器批量结构化提取列表 |
+| `browser_tabs` | 交互 | 专属标签页列表、切换与关闭 |
+| `browser_status` | 状态 | 查看后端类型、连接健康度与各站点限速余量 |
+| `harvest` | 采集 | 站点配方结构化采集（0 token 拦截优先） |
+| `harvest_recipes` | 采集 | 发现当前已加载的站点采集能力与参数约束 |

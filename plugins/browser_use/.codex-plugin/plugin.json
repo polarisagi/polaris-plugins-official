@@ -1,7 +1,7 @@
 {
   "name": "polaris-browser-use",
-  "version": "1.0.0",
-  "description": "Control a browser via DOM extraction and precise element interaction (DOM/Accessibility Tree instead of screenshots).",
+  "version": "2.0.0",
+  "description": "复用你已登录的 Chrome；结构化采集；省 token。",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -10,13 +10,13 @@
   "homepage": "https://polarisagi.online/",
   "repository": "https://github.com/polarisagi/polaris-plugins-official",
   "license": "AGPL-3.0",
-  "keywords": ["browser", "playwright", "dom-extraction", "accessibility-tree", "mcp"],
+  "keywords": ["browser", "patchright", "dom-extraction", "harvest", "mcp"],
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
     "displayName": "Browser Use (DOM Extraction)",
-    "shortDescription": "Navigate, extract DOM structure, and precisely interact with web elements.",
-    "longDescription": "Advanced browser automation via custom Python MCP server. Operates using DOM extraction and unique component IDs instead of pixel coordinates, drastically reducing hallucination.\n\nRequires: Python.",
+    "shortDescription": "复用你已登录的 Chrome；结构化采集；省 token。",
+    "longDescription": "Polaris 官方浏览器自动化与结构化采集插件。复用你日常已登录的 Chrome 浏览器会话，支持 0 token 网络拦截采集与现代化省 token DOM 快照交互。严格隔离在 Polaris 自建窗口内操作，不打扰用户其他标签。\n\nRequires: Python ≥3.14, Chrome.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
@@ -24,9 +24,9 @@
     "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
     "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
     "defaultPrompt": [
-      "Navigate to https://example.com and take a screenshot.",
-      "Click the login button on the current page.",
-      "Fill in the search box with 'AI agents'."
+      "查看当前浏览器状态与支持的采集配方。",
+      "打开 https://example.com 并阅读正文。",
+      "采集知乎热门话题。"
     ]
   }
 }

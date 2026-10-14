@@ -301,6 +301,31 @@ else
   fi
 fi
 
+# ── 6. 跨插件共享模块一致性检查 ───────────────────────────────────────────────
+print_step "6/6  跨插件一致性 — browser_hub.py SHA-256 对比"
+ALL_HUBS=($(find plugins -name "browser_hub.py" ! -path "*/.venv/*" 2>/dev/null || true))
+if [ "${#ALL_HUBS[@]}" -gt 1 ]; then
+  FIRST_HASH=""
+  CONSISTENT=true
+  for f in "${ALL_HUBS[@]}"; do
+    H=$(shasum -a 256 "$f" | awk '{print $1}')
+    if [ -z "$FIRST_HASH" ]; then
+      FIRST_HASH="$H"
+    elif [ "$FIRST_HASH" != "$H" ]; then
+      CONSISTENT=false
+      echo -e "${RED}  ✘ 差异文件: $f (hash: $H != $FIRST_HASH)${RESET}"
+    fi
+  done
+  if $CONSISTENT; then
+    pass "所有 browser_hub.py 副本 sha256 一致 (${#ALL_HUBS[@]} 个副本)"
+  else
+    fail "存在不一致的 browser_hub.py 副本，请同步"
+  fi
+else
+  skipped "未检测到多个 browser_hub.py 副本（仅 ${#ALL_HUBS[@]} 个）"
+fi
+
+
 # ── 汇总报告 ──────────────────────────────────────────────────────────────────
 print_header "检测结果汇总"
 echo -e "  ${GREEN}✔ 通过: ${PASS}${RESET}   ${RED}✘ 失败: ${FAIL}${RESET}   ${YELLOW}⊘ 跳过: ${SKIP}${RESET}"
