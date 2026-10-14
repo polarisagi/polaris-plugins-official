@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Polaris Browser Bridge",
+  "version": "1.0.0",
+  "description": "让 Polaris 在独立窗口中使用你已登录的浏览器会话（仅限 Polaris 自己打开的标签）。",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "sw.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Polaris Browser Bridge",
+    "default_popup": "options.html"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4WHg6AIH+busdVRShg6fQSzYp4RMt6umPqRfa84ymY+u70jsxnSIHuZh/2PdZ6/lSXsmUQK0bd4jkFVquF5z5vyRlc7VbT1D7aoWxnLQ4vS24uzXyjRtf+YWUOrX4UPiRAFk9nEwMZ/NKBZFnIjpBvGW6vG3rNuy5xevUylTimtKXoz/c1Y+CwWvxvMFaix+jz3eGUaORgc/RaClVNUq7ciI0xQXCVMujKyBoiq6inH+CgfMCCYBoCGHx+5RgXJSOmMLPk0cPZH7O8qd5siPC7c8X/3eaoWnqqwrrebbqU1GbfLhzIrd/vxUiZJ+W2ZRacuU66TZMTj2T2Cdry3DNQIDAQAB"
+}

@@ -19,3 +19,7 @@ plugins/knowledge_base/knowledge_base
 .ruff_cache/
 */.ruff_cache/
 *.egg-info/
+
+# Extension private keys
+key.pem
+*/key.pem
