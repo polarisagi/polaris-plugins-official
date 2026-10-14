@@ -52,7 +52,7 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 ### 插件规范
 
 每个插件遵循相同结构：
-- `.polaris-plugin/plugin.json` — 插件清单文件（元数据、分类、展示信息）
+- `.codex-plugin/plugin.json` — 插件清单文件（元数据、分类、展示信息）。Polaris 内核按 ADR-0103 读取 `.codex-plugin/` / `.claude-plugin/` / 根 `plugin.json`。
 - `src/main.py` — MCP 服务器入口
 - `.mcp.json` — Claude Desktop / Claude Code 使用的 MCP 服务器配置
 - `pyproject.toml` — 依赖声明（所有插件要求 Python ≥ 3.14）
@@ -138,7 +138,7 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 - **强制严格模式 (Strict Mode)**：通过 JSON Schema (如 Pydantic) 定义严格的必填项（required），坚决抵制扁平化全可选参数，有效消除 LLM 参数幻觉。
 
 ### 3. Claude Code 插件结构
-- 插件以 `.polaris-plugin/plugin.json` 为元数据核心。
+- 插件以 `.codex-plugin/plugin.json` 为元数据核心。
 - 使用 `skills/`（Markdown 指令与工作流）代替传统的斜杠命令。
 - 提供 `hooks/` 与 `agents/` 来增强生命周期和任务隔离能力。
 

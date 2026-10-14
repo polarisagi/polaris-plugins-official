@@ -9,7 +9,7 @@
 **Polaris Plugins Official** 是 [Polaris AI Agent](https://github.com/polarisagi/polaris) 的官方扩展库，同时完全兼容以下行业标准：
 
 - **Anthropic MCP**（Model Context Protocol）—— stdio JSON-RPC 2.0，协议版本 `2024-11-05`
-- **OpenAI Codex Plugin**（`.polaris-plugin/plugin.json` + `.mcp.json`）—— 当前现行标准
+- **OpenAI Codex Plugin**（`.codex-plugin/plugin.json` + `.mcp.json`）—— 当前现行标准。Polaris 内核按 ADR-0103 读取 `.codex-plugin/` / `.claude-plugin/` / 根 `plugin.json`。
 
 > **注**：旧版 `ai-plugin.json`（ChatGPT Plugin Store 格式）已于 2024 年 3 月废弃，本项目不再使用。
 
@@ -92,17 +92,17 @@ Polaris 的 `pkg/extensions/marketplace/` 模块会自动发现并安装本仓�
 ```
 plugins/
   computer_use/
-    .polaris-plugin/plugin.json   # Codex 插件清单
+    .codex-plugin/plugin.json   # Codex 插件清单
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py                  # Python MCP 服务端
     pyproject.toml
   browser_use/
-    .polaris-plugin/plugin.json
+    .codex-plugin/plugin.json
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py
     pyproject.toml
   knowledge_base/
-    .polaris-plugin/plugin.json
+    .codex-plugin/plugin.json
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py                  # Python MCP 服务端
     pyproject.toml
