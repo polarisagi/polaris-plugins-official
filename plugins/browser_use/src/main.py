@@ -21,6 +21,7 @@ from .tools_browser import (
     tool_browser_status,
     tool_browser_tabs,
 )
+from .tools_harvest import tool_harvest, tool_harvest_recipes
 
 mcp = FastMCP("polaris-browser-use")
 
@@ -99,6 +100,25 @@ async def browser_tabs(
 async def browser_status() -> dict[str, Any]:
     """查看当前浏览器后端类型(cdp/managed/extension)、连接状态与各站点频次限制剩余配额。"""
     return await tool_browser_status()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def harvest(
+    site: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+    max_items: int = 20,
+) -> dict[str, Any]:
+    """针对已知站点（如知乎、X、微博等）执行确定性结构化采集，优先通过网络拦截（0 token），内置全局频次限速。"""
+    return await tool_harvest(
+        site=site, action=action, params=params, max_items=max_items
+    )
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def harvest_recipes() -> dict[str, Any]:
+    """列出当前支持的站点配方、动作定义、参数与风控状态。"""
+    return await tool_harvest_recipes()
 
 
 def main() -> None:

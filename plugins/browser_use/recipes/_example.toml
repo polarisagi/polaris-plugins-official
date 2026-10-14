@@ -1,0 +1,37 @@
+[site]
+id = "_example"
+name = "Hacker News (Example)"
+base_url = "https://news.ycombinator.com"
+
+[limits]
+min_interval_s = 1.0
+jitter_s = [0.2, 0.5]
+max_per_hour = 120
+max_per_day = 1000
+active_hours = "00:00-24:00"
+cooldown_on_block_h = 1.0
+
+[block_signals]
+status = [403, 429]
+url_contains = ["blocked", "captcha"]
+text_contains = ["Too Many Requests", "Please verify you are a human"]
+
+[actions.front]
+description = "获取 Hacker News 首页热门条目"
+
+[[actions.front.steps]]
+goto = "https://news.ycombinator.com/"
+wait_for = "tr.athing"
+timeout_s = 15.0
+
+[actions.front.extract]
+method = "css"
+container = "tr.athing"
+
+[actions.front.extract.fields]
+id = "@id"
+url = "span.titleline > a@href"
+title = "span.titleline > a"
+author = "span.titleline"
+published_at = ""
+excerpt = "span.titleline > a"
