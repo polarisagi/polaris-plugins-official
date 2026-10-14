@@ -1,0 +1,49 @@
+{
+  "data": {
+    "search_by_raw_query": {
+      "search_timeline": {
+        "timeline": {
+          "instructions": [
+            {
+              "type": "TimelineAddEntries",
+              "entries": [
+                {
+                  "entryId": "tweet-189000111222333444",
+                  "sortIndex": "189000111222333444",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "itemType": "TimelineTweet",
+                      "tweet_results": {
+                        "result": {
+                          "rest_id": "189000111222333444",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "legacy": {
+                                  "screen_name": "ai_researcher",
+                                  "name": "AI Researcher"
+                                }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "created_at": "Mon Oct 12 14:00:00 +0000 2026",
+                            "full_text": "Excited to share our new work on deterministic pipeline automation for Autonomous Agents! https://t.co/example",
+                            "favorite_count": 890,
+                            "retweet_count": 210,
+                            "reply_count": 45
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -21,12 +21,14 @@ HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 def get_dot_path(data: Any, path: str) -> Any:
     """按点路径提取多层级嵌套字典或列表中的数据。
 
-    支持例如: 'data.items.0.title' 或 'post.author.name'。
+    支持例如: 'data.items.0.title', 'items[0].id' 或 'post.author.name'。
     """
     if not path or data is None:
         return None
 
-    parts = path.split(".")
+    # 兼容方括号数组下标访问，如 a[0].b -> a.0.b
+    normalized_path = re.sub(r"\[(\d+)\]", r".\1", path)
+    parts = normalized_path.split(".")
     curr = data
     for part in parts:
         if curr is None:

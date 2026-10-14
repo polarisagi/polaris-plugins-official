@@ -1,0 +1,108 @@
+status = "beta"
+[site]
+id = "x"
+name = "X (Twitter)"
+base_url = "https://x.com"
+
+[site.login_check]
+url = "https://x.com/home"
+logged_in_selector = "[data-testid='SideNav_AccountSwitcher_Button'], [aria-label='Account menu']"
+
+[limits]
+min_interval_s = 5.0
+jitter_s = [1.0, 3.0]
+max_per_hour = 50
+max_per_day = 250
+active_hours = "00:00-24:00"
+cooldown_on_block_h = 6.0
+
+[block_signals]
+status = [403, 429]
+url_contains = ["/account/access", "/i/flow/login", "challenge"]
+text_contains = ["Rate limit exceeded", "Something went wrong", "Suspicious activity"]
+
+[actions.search]
+description = "搜索 X 实时推文"
+
+[actions.search.params.q]
+type = "string"
+description = "搜索关键词"
+required = true
+
+[actions.search.params.mode]
+type = "string"
+description = "搜索模式: top 或 latest"
+default = "top"
+required = false
+
+[[actions.search.steps]]
+goto = "https://x.com/search?q={q|urlencode}&f=live"
+wait_for = "article[data-testid='tweet']"
+timeout_s = 15.0
+
+[[actions.search.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.search.extract]
+method = "xhr"
+url_glob = "*/graphql/*/SearchTimeline*"
+items = "data.search_by_raw_query.search_timeline.timeline.instructions[0].entries"
+
+[actions.search.extract.fields]
+id = "entryId"
+title = "content.itemContent.tweet_results.result.legacy.full_text"
+excerpt = "content.itemContent.tweet_results.result.legacy.full_text"
+author = "content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
+published_at = "content.itemContent.tweet_results.result.legacy.created_at"
+"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count"
+"metrics.retweets" = "content.itemContent.tweet_results.result.legacy.retweet_count"
+
+[actions.search.extract_fallback]
+method = "css"
+container = "article[data-testid='tweet']"
+
+[actions.search.extract_fallback.fields]
+title = "div[data-testid='tweetText']"
+excerpt = "div[data-testid='tweetText']"
+author = "div[data-testid='User-Name']"
+url = "a[href*='/status/']@href"
+"metrics.replies" = "button[data-testid='reply']"
+
+[actions.user_timeline]
+description = "获取指定用户的最新推文时间线"
+
+[actions.user_timeline.params.handle]
+type = "string"
+description = "X 账号用户名（无需加 @ 符号）"
+required = true
+
+[[actions.user_timeline.steps]]
+goto = "https://x.com/{handle}"
+wait_for = "article[data-testid='tweet']"
+timeout_s = 15.0
+
+[[actions.user_timeline.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.user_timeline.extract]
+method = "xhr"
+url_glob = "*/graphql/*/UserTweets*"
+items = "data.user.result.timeline_v2.timeline.instructions[0].entries"
+
+[actions.user_timeline.extract.fields]
+id = "entryId"
+title = "content.itemContent.tweet_results.result.legacy.full_text"
+excerpt = "content.itemContent.tweet_results.result.legacy.full_text"
+author = "content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
+published_at = "content.itemContent.tweet_results.result.legacy.created_at"
+"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count"
+
+[actions.user_timeline.extract_fallback]
+method = "css"
+container = "article[data-testid='tweet']"
+
+[actions.user_timeline.extract_fallback.fields]
+title = "div[data-testid='tweetText']"
+excerpt = "div[data-testid='tweetText']"
+author = "div[data-testid='User-Name']"
+url = "a[href*='/status/']@href"

@@ -21,7 +21,11 @@ from .tools_browser import (
     tool_browser_status,
     tool_browser_tabs,
 )
-from .tools_harvest import tool_harvest, tool_harvest_recipes
+from .tools_harvest import (
+    tool_harvest,
+    tool_harvest_recipes,
+    tool_harvest_selftest,
+)
 
 mcp = FastMCP("polaris-browser-use")
 
@@ -119,6 +123,12 @@ async def harvest(
 async def harvest_recipes() -> dict[str, Any]:
     """列出当前支持的站点配方、动作定义、参数与风控状态。"""
     return await tool_harvest_recipes()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def harvest_selftest(site: str) -> dict[str, Any]:
+    """对指定站点的所有采集动作进行一次最小自测并报告字段完整率。"""
+    return await tool_harvest_selftest(site=site)
 
 
 def main() -> None:

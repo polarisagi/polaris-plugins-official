@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "type": "hot_list_feed",
+      "style_type": "1",
+      "id": "1001",
+      "detail_text": "2450 万热度",
+      "target": {
+        "id": 89201928,
+        "title": "如何看待 2026 年最新大模型推理技术的发展？",
+        "url": "https://www.zhihu.com/question/89201928",
+        "excerpt": "大模型在推理链与自反思维度的最新架构演进分析...",
+        "author": {
+          "name": "极客观察员"
+        }
+      }
+    },
+    {
+      "type": "hot_list_feed",
+      "style_type": "1",
+      "id": "1002",
+      "detail_text": "1820 万热度",
+      "target": {
+        "id": 89201929,
+        "title": "有哪些令人惊艳的自托管开箱即用开源工具？",
+        "url": "https://www.zhihu.com/question/89201929",
+        "excerpt": "盘点近期在 GitHub 上高星涌现的本地私有化部署神器...",
+        "author": {
+          "name": "开源布道师"
+        }
+      }
+    }
+  ]
+}

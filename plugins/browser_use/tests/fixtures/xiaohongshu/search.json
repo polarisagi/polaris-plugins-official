@@ -1,0 +1,27 @@
+{
+  "code": 0,
+  "success": true,
+  "msg": "success",
+  "data": {
+    "cursor": "20",
+    "has_more": true,
+    "items": [
+      {
+        "id": "6612345678abcdef12345678",
+        "model_type": "note",
+        "note_card": {
+          "display_title": "超好用！本地大模型生产力工具合集推荐",
+          "interact_info": {
+            "liked": false,
+            "liked_count": "5.2万",
+            "collected_count": "3.8万"
+          },
+          "user": {
+            "nickname": "科技小达人",
+            "avatar": "https://sns-avatar-qc.xhscdn.com/avatar/default.jpg"
+          }
+        }
+      }
+    ]
+  }
+}

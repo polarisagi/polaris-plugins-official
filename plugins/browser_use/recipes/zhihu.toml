@@ -1,0 +1,93 @@
+status = "beta"
+[site]
+id = "zhihu"
+name = "知乎"
+base_url = "https://www.zhihu.com"
+
+[site.login_check]
+url = "https://www.zhihu.com/"
+logged_in_selector = ".AppHeader-profile, .AppHeader-userAvatar, [aria-label='用户头像']"
+
+[limits]
+min_interval_s = 4.0
+jitter_s = [1.0, 3.5]
+max_per_hour = 60
+max_per_day = 300
+active_hours = "08:00-23:30"
+cooldown_on_block_h = 6.0
+
+[block_signals]
+status = [403, 429]
+url_contains = ["/account/unhuman", "captcha", "/antispam"]
+text_contains = ["安全验证", "访问异常", "当前请求存在异常"]
+
+[actions.hot]
+description = "获取知乎全网热榜条目"
+
+[[actions.hot.steps]]
+goto = "https://www.zhihu.com/billboard"
+wait_for = ".HotList-item, .HotList-list"
+timeout_s = 15.0
+
+[actions.hot.extract]
+method = "xhr"
+url_glob = "*/api/v3/feed/topstory/hot-lists/total*"
+items = "data"
+
+[actions.hot.extract.fields]
+id = "target.id"
+url = "target.url"
+title = "target.title"
+author = "target.author.name"
+excerpt = "target.excerpt"
+"metrics.hot" = "detail_text"
+
+[actions.hot.extract_fallback]
+method = "css"
+container = ".HotList-item"
+
+[actions.hot.extract_fallback.fields]
+id = "@data-id"
+title = ".HotList-itemTitle"
+url = ".HotList-itemTitle a@href"
+excerpt = ".HotList-itemExcerpt"
+"metrics.hot" = ".HotList-itemMetrics"
+
+[actions.search]
+description = "搜索知乎问答与文章内容"
+
+[actions.search.params.q]
+type = "string"
+description = "搜索关键词"
+required = true
+
+[[actions.search.steps]]
+goto = "https://www.zhihu.com/search?type=content&q={q|urlencode}"
+wait_for = "div.SearchResult-Card, .Search-container"
+timeout_s = 15.0
+
+[[actions.search.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.search.extract]
+method = "xhr"
+url_glob = "*/api/v4/search_v3*"
+items = "data"
+
+[actions.search.extract.fields]
+id = "object.id"
+url = "object.url"
+title = "highlight.title"
+excerpt = "object.excerpt"
+author = "object.author.name"
+"metrics.likes" = "object.voteup_count"
+
+[actions.search.extract_fallback]
+method = "css"
+container = "div.SearchResult-Card"
+
+[actions.search.extract_fallback.fields]
+title = "h2"
+url = "h2 a@href"
+excerpt = ".RichContent-inner"
+author = ".AuthorInfo-name"

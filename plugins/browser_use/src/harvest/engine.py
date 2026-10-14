@@ -164,9 +164,10 @@ def _extract_xhr_items(
 
 async def _extract_content(
     page: Page, action: Action, captured_json: list[Any], max_items: int
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], str]:
     """按配方首选方案与备用降级方案抽取数据列表。"""
     raw_items: list[dict[str, Any]] = []
+    method_used = "xhr" if isinstance(action.extract, XhrExtract) else "css"
     if isinstance(action.extract, XhrExtract):
         if not captured_json:
             await asyncio.sleep(1.0)
@@ -191,7 +192,9 @@ async def _extract_content(
             max_items=max_items,
         )
         raw_items = extracted.get("items", [])
-    return raw_items
+        if raw_items:
+            method_used = "css"
+    return raw_items, method_used
 
 
 async def run_harvest(
@@ -199,7 +202,8 @@ async def run_harvest(
     action_name: str,
     params: dict[str, Any] | None = None,
     max_items: int = 20,
-) -> list[dict[str, Any]]:
+    return_method: bool = False,
+) -> Any:
     """核心入口：根据配方与动作执行全流程数据采集。"""
     action = recipe.actions.get(action_name)
     if not action:
@@ -250,9 +254,14 @@ async def run_harvest(
             await _check_login_state(hub, page, site_id, recipe.site.login_check)
 
         # 6. 数据提取与格式标准化
-        raw_items = await _extract_content(page, action, captured_json, max_items)
+        raw_items, method_used = await _extract_content(
+            page, action, captured_json, max_items
+        )
         normalized = normalize_items(raw_items, site_id, recipe.site.base_url)
-        return normalized[:max_items]
+        res = normalized[:max_items]
+        if return_method:
+            return res, method_used
+        return res
 
     finally:
         if is_xhr and "page" in locals():

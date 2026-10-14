@@ -1,0 +1,50 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "timeline_v2": {
+          "timeline": {
+            "instructions": [
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "tweet-189000555666777888",
+                    "sortIndex": "189000555666777888",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "rest_id": "189000555666777888",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "legacy": {
+                                    "screen_name": "OpenAI",
+                                    "name": "OpenAI"
+                                  }
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "created_at": "Sun Oct 11 18:30:00 +0000 2026",
+                              "full_text": "Announcing the latest updates to our developer platform and agent APIs.",
+                              "favorite_count": 4500,
+                              "retweet_count": 1200
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "ok": 1,
+  "http_code": 200,
+  "data": {
+    "band_list": [
+      {
+        "word": "自托管 AI Agent 落地实践",
+        "word_scheme": "#自托管 AI Agent 落地实践#",
+        "note": "探讨开箱即用私有化部署的最佳架构",
+        "raw_hot": 1892000,
+        "num": 1,
+        "category": "科技"
+      },
+      {
+        "word": "开源自动化管线工具推荐",
+        "word_scheme": "#开源自动化管线工具推荐#",
+        "note": "零 Token 采集与结构化处理经验分享",
+        "raw_hot": 1420000,
+        "num": 2,
+        "category": "数码"
+      }
+    ]
+  }
+}

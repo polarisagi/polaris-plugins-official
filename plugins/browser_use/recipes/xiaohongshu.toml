@@ -1,0 +1,68 @@
+status = "beta"
+[site]
+id = "xiaohongshu"
+name = "小红书"
+base_url = "https://www.xiaohongshu.com"
+
+[site.login_check]
+url = "https://www.xiaohongshu.com/explore"
+logged_in_selector = ".user-side, .avatar-wrapper, .user.avatar"
+
+[limits]
+min_interval_s = 8.0
+jitter_s = [2.0, 4.0]
+max_per_hour = 30
+max_per_day = 120
+active_hours = "09:00-23:00"
+cooldown_on_block_h = 12.0
+
+[block_signals]
+status = [403, 429, 461]
+url_contains = ["/website-login/captcha", "/sec/captcha", "verify"]
+text_contains = ["验证码", "请完成安全验证", "访问过于频繁"]
+
+[actions.search]
+description = "搜索小红书笔记与图文"
+
+[actions.search.params.q]
+type = "string"
+description = "搜索关键词"
+required = true
+
+[actions.search.params.sort]
+type = "string"
+description = "排序方式: general (综合) 或 time_descending (最新)"
+default = "general"
+required = false
+
+[[actions.search.steps]]
+goto = "https://www.xiaohongshu.com/search_result?keyword={q|urlencode}&type=54"
+wait_for = "section.note-item, .feeds-container"
+timeout_s = 15.0
+
+[[actions.search.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.search.extract]
+method = "xhr"
+url_glob = "*/api/sns/web/v1/search/notes*"
+items = "data.items"
+
+[actions.search.extract.fields]
+id = "id"
+title = "note_card.display_title"
+url = "id"
+excerpt = "note_card.display_title"
+author = "note_card.user.nickname"
+"metrics.likes" = "note_card.interact_info.liked_count"
+
+[actions.search.extract_fallback]
+method = "css"
+container = "section.note-item"
+
+[actions.search.extract_fallback.fields]
+id = "@data-id"
+title = ".title"
+url = "a.cover@href"
+author = ".author .name"
+"metrics.likes" = ".like-wrapper .count"

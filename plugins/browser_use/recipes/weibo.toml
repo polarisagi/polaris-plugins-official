@@ -1,0 +1,99 @@
+status = "beta"
+[site]
+id = "weibo"
+name = "微博"
+base_url = "https://weibo.com"
+
+[site.login_check]
+url = "https://weibo.com"
+logged_in_selector = ".gn_position, .woo-avatar-main, [aria-label='个人中心']"
+
+[limits]
+min_interval_s = 5.0
+jitter_s = [1.0, 3.0]
+max_per_hour = 50
+max_per_day = 250
+active_hours = "08:00-23:30"
+cooldown_on_block_h = 6.0
+
+[block_signals]
+status = [403, 429]
+url_contains = ["passport.weibo.com/visitor", "security", "captcha"]
+text_contains = ["访问受限", "异常访问", "验证码"]
+
+[actions.hot]
+description = "获取微博实时热搜榜"
+
+[[actions.hot.steps]]
+goto = "https://weibo.com/hot/weibo/102803"
+wait_for = ".wbpro-feed-content, .card-wrap, div.Hot-item"
+timeout_s = 15.0
+
+[[actions.hot.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.hot.extract]
+method = "xhr"
+url_glob = "*/ajax/statuses/hot_band*"
+items = "data.band_list"
+
+[actions.hot.extract.fields]
+id = "word_scheme"
+title = "note"
+url = "word_scheme"
+excerpt = "note"
+"metrics.hot" = "raw_hot"
+"metrics.num" = "num"
+
+[actions.hot.extract_fallback]
+method = "css"
+container = "div.wbpro-feed-content"
+
+[actions.hot.extract_fallback.fields]
+title = "div.detail_text"
+excerpt = "div.detail_text"
+url = "a@href"
+author = ".name"
+
+[actions.search]
+description = "搜索微博博文"
+
+[actions.search.params.q]
+type = "string"
+description = "搜索关键词"
+required = true
+
+[[actions.search.steps]]
+goto = "https://s.weibo.com/weibo?q={q|urlencode}"
+wait_for = "div.card-wrap"
+timeout_s = 15.0
+
+[[actions.search.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.search.extract]
+method = "xhr"
+url_glob = "*/ajax/statuses/search*"
+items = "data.statuses"
+
+[actions.search.extract.fields]
+id = "mid"
+title = "text_raw"
+url = "mid"
+excerpt = "text_raw"
+author = "user.screen_name"
+published_at = "created_at"
+"metrics.likes" = "attitudes_count"
+"metrics.comments" = "comments_count"
+"metrics.reposts" = "reposts_count"
+
+[actions.search.extract_fallback]
+method = "css"
+container = "div.card-wrap"
+
+[actions.search.extract_fallback.fields]
+id = "@mid"
+title = "p.txt"
+excerpt = "p.txt"
+author = "a.name"
+"metrics.likes" = ".woo-box-item-flex"

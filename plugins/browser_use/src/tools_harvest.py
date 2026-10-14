@@ -114,3 +114,92 @@ async def tool_harvest_recipes() -> dict[str, Any]:
         return {"ok": True, "recipes": site_list, "total": len(site_list)}
     except (OSError, ValueError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "recipe_error", "message": str(e)}}
+
+
+def _calc_field_rates(items: list[dict[str, Any]]) -> dict[str, float]:
+    """计算返回条目列表中核心字段的有效填充率。"""
+    count = len(items)
+    if count == 0:
+        return {}
+    check_fields = [
+        "id",
+        "url",
+        "title",
+        "author",
+        "published_at",
+        "excerpt",
+        "metrics",
+    ]
+    res: dict[str, float] = {}
+    for f in check_fields:
+        filled = sum(1 for item in items if item.get(f))
+        res[f] = round(filled / count, 2)
+    return res
+
+
+async def _run_single_action_selftest(
+    recipe: Any, action_name: str, action_obj: Any
+) -> dict[str, Any]:
+    """运行单个动作的测试调用并返回结果统计。"""
+    fixed_params: dict[str, dict[str, Any]] = {
+        "search": {"q": "科技"},
+        "user_timeline": {"handle": "OpenAI"},
+        "hot": {},
+    }
+    params = dict(fixed_params.get(action_name, {}))
+    for p_name, p_spec in action_obj.params.items():
+        if p_spec.required and p_name not in params:
+            params[p_name] = p_spec.default or "test"
+
+    try:
+        items, method_used = await run_harvest(
+            recipe,
+            action_name=action_name,
+            params=params,
+            max_items=10,
+            return_method=True,
+        )
+        return {
+            "action": action_name,
+            "ok": True,
+            "item_count": len(items),
+            "field_fill_rate": _calc_field_rates(items),
+            "method_used": method_used,
+            "error": None,
+        }
+    except (HubError, PwError, OSError, RuntimeError, ValueError) as e:
+        return {
+            "action": action_name,
+            "ok": False,
+            "item_count": 0,
+            "field_fill_rate": {},
+            "method_used": action_obj.extract.method,
+            "error": str(e),
+        }
+
+
+async def tool_harvest_selftest(site: str) -> dict[str, Any]:
+    """对指定站点的所有采集动作进行一次最小自测并报告字段完整率。"""
+    recipes, _ = load_all_recipes()
+    recipe = recipes.get(site)
+    if not recipe:
+        return {
+            "ok": False,
+            "error": {
+                "code": "invalid_args",
+                "message": f"未找到站点 {site} 的采集配方，请调用 harvest_recipes 查询可用站点",
+            },
+        }
+
+    results = []
+    for action_name, action_obj in recipe.actions.items():
+        res = await _run_single_action_selftest(recipe, action_name, action_obj)
+        results.append(res)
+
+    all_ok = all(r["ok"] for r in results) if results else False
+    return {
+        "ok": all_ok,
+        "site": site,
+        "status": recipe.status,
+        "results": results,
+    }

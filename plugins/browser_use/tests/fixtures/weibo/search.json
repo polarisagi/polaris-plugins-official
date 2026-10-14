@@ -1,0 +1,21 @@
+{
+  "ok": 1,
+  "data": {
+    "statuses": [
+      {
+        "id": 5089123456789012,
+        "mid": "5089123456789012",
+        "text_raw": "今天测试了一下最新的自动化流水线系统，数据采集到总结全部自动化完成，太省心了！",
+        "created_at": "Wed Oct 14 15:30:00 +0800 2026",
+        "attitudes_count": 340,
+        "comments_count": 56,
+        "reposts_count": 28,
+        "user": {
+          "id": 1234567890,
+          "screen_name": "极客数码说",
+          "avatar_large": "https://tvax1.sinaimg.cn/default.jpg"
+        }
+      }
+    ]
+  }
+}
