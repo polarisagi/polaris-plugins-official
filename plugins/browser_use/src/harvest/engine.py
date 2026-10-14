@@ -214,12 +214,16 @@ async def run_harvest(
     call_params = params or {}
     site_id = recipe.site.id
 
-    # 1. 站点频次与风控准入
-    await acquire(site_id, recipe.limits)
-
-    # 2. 获取无人值守工作页并在页面锁保护下执行
+    # 1. 先在页面锁内取页（可能抛 needs_user_approval，此时不应消耗限速名额）
     hub = await get_hub()
     await hub.page_lock.acquire()
+    try:
+        page = await hub.page(unattended=True)
+        # 2. 取页成功后再占用站点频次与风控名额
+        await acquire(site_id, recipe.limits)
+    except BaseException:
+        hub.page_lock.release()
+        raise
 
     captured_json: list[Any] = []
 
@@ -239,7 +243,6 @@ async def run_harvest(
     is_xhr = isinstance(action.extract, XhrExtract)
 
     try:
-        page = await hub.page(unattended=True)
         if is_xhr:
             page.on("response", on_response)
 
@@ -264,6 +267,6 @@ async def run_harvest(
         return res
 
     finally:
-        if is_xhr and "page" in locals():
+        if is_xhr:
             page.remove_listener("response", on_response)
         hub.page_lock.release()

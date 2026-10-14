@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import secrets
+import time
 import uuid
 from typing import Any
 
@@ -44,11 +45,23 @@ def get_or_create_token() -> str:
             pass
 
     token = secrets.token_hex(32)
-    token_file.write_text(token, encoding="utf-8")
+    token_file.parent.mkdir(parents=True, exist_ok=True)
     try:
-        os.chmod(token_file, 0o600)
-    except OSError:
-        pass
+        # 原子创建并以 0600 写入，避免先写后 chmod 的可读窗口
+        fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        # 并发创建：另一方已写入，重新读取
+        for _ in range(20):
+            try:
+                t = token_file.read_text(encoding="utf-8").strip()
+                if t:
+                    return t
+            except OSError:
+                pass
+            time.sleep(0.05)
+        return token
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(token)
     return token
 
 
@@ -546,7 +559,9 @@ class ExtensionBackend:
 
         endpoint_url = f"http://127.0.0.1:{self.relay.cdp_port}"
         try:
-            browser = await pw.chromium.connect_over_cdp(endpoint_url, timeout=30000)
+            browser: Any = await pw.chromium.connect_over_cdp(
+                endpoint_url, timeout=30000
+            )
             self.browser = browser
             self._bind_disconnect(browser)
             return browser
@@ -563,7 +578,7 @@ class ExtensionBackend:
             return browser
 
     def _bind_disconnect(self, browser: Browser) -> None:
-        def on_disconnected() -> None:
+        def on_disconnected(_browser: Any = None) -> None:
             self.browser = None
             if self._on_disconnected_cb:
                 self._on_disconnected_cb()

@@ -165,3 +165,40 @@ def test_load_all_recipes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     recipes, _diag = load_all_recipes()
     assert "_example" in recipes
     assert recipes["_example"].site.name == "Hacker News (Example)"
+
+
+async def test_run_harvest_page_failure_does_not_consume_ratelimit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """取页失败（needs_user_approval）时不应占用限速名额，且页面锁必须释放。"""
+    import asyncio
+
+    from src.browser_hub import HubError
+    from src.harvest import engine
+
+    class FakeHub:
+        def __init__(self) -> None:
+            self.page_lock = asyncio.Lock()
+
+        async def page(self, *, unattended: bool = False) -> None:
+            raise HubError("needs_user_approval", "需要用户授权")
+
+    hub = FakeHub()
+    acquired: list[str] = []
+
+    async def fake_get_hub() -> FakeHub:
+        return hub
+
+    async def fake_acquire(site_id: str, _limits: object) -> None:
+        acquired.append(site_id)
+
+    monkeypatch.setattr(engine, "get_hub", fake_get_hub)
+    monkeypatch.setattr(engine, "acquire", fake_acquire)
+
+    recipe = next(iter(load_all_recipes()[0].values()))
+    action_name = next(iter(recipe.actions))
+    with pytest.raises(HubError) as ei:
+        await engine.run_harvest(recipe, action_name)
+    assert ei.value.code == "needs_user_approval"
+    assert acquired == []
+    assert not hub.page_lock.locked()

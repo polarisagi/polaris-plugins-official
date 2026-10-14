@@ -17,6 +17,7 @@ import os
 import platform
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -219,7 +220,7 @@ class CdpToggleBackend:
         browser = await pw.chromium.connect_over_cdp(ws_url, timeout=60000)
         self.browser = browser
 
-        def on_disconnected() -> None:
+        def on_disconnected(_browser: Any = None) -> None:
             self.browser = None
             if self._on_disconnected_cb:
                 self._on_disconnected_cb()
@@ -378,7 +379,7 @@ class ManagedBackend:
         return browser
 
     def _bind_disconnect(self, browser: Browser) -> None:
-        def on_disconnected() -> None:
+        def on_disconnected(_browser: Any = None) -> None:
             self.browser = None
             if self._on_disconnected_cb:
                 self._on_disconnected_cb()
@@ -437,11 +438,14 @@ class BrowserHub:
     def __init__(self) -> None:
         self.backend: Backend | None = None
         self.backend_reason: str = "init"
-        self.pw: Playwright | None = None
+        # 两套驱动（patchright / playwright）类型同构但不同模块，统一按 Any 处理
+        self.pw: Any = None
         self.browser: Browser | None = None
         self.work_page: Page | None = None
         self.has_window: bool = False
         self.owned_targets: set[str] = set()
+        # targetId -> Page：仅记录 Polaris 自建页，避免遍历用户日常标签
+        self._owned_pages: dict[str, Page] = {}
         self._lock = asyncio.Lock()
         self.page_lock = asyncio.Lock()
         self._last_activity = time.time()
@@ -490,6 +494,7 @@ class BrowserHub:
             ):
                 self.idle_release_min = 10
 
+        pw_init: Any  # 同上：两套驱动入口函数类型同构，按 Any 处理
         driver_choice = os.environ.get(ENV_DRIVER, "patchright").strip().lower()
         if driver_choice == "playwright":
             from playwright.async_api import async_playwright as pw_init
@@ -520,30 +525,19 @@ class BrowserHub:
         self.work_page = None
         self.has_window = False
         self.owned_targets.clear()
+        self._owned_pages.clear()
 
-    async def _find_page_by_target_id(
-        self, target_id: str, timeout_s: float = 5.0
-    ) -> Page:
-        """在 browser.contexts[0].pages 中查找匹配目标 targetId 的 Page。"""
+    async def _find_page_by_marker(self, marker: str, timeout_s: float = 5.0) -> Page:
+        """按唯一标记 URL 在 contexts[0].pages 中定位自建页（不对任何页开 CDP 会话）。"""
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             if self.browser and self.browser.contexts:
                 for p in self.browser.contexts[0].pages:
-                    if p.is_closed():
-                        continue
-                    try:
-                        s = await p.context.new_cdp_session(p)
-                        info = await s.send("Target.getTargetInfo")
-                        await s.detach()
-                        tid = info.get("targetInfo", {}).get("targetId")
-                        if tid == target_id:
-                            return p
-                    except (PwError, OSError):
-                        logger.debug("获取目标信息异常，跳过重试")
-                        continue
+                    if not p.is_closed() and p.url == marker:
+                        return p
             await asyncio.sleep(0.1)
         raise HubError(
-            "no_page", f"未能在 {timeout_s} 秒内定位自建目标页 (targetId={target_id})"
+            "no_page", f"未能在 {timeout_s} 秒内定位自建目标页 (marker={marker})"
         )
 
     async def _create_owned_page_locked(self, url: str = "about:blank") -> Page:
@@ -573,11 +567,13 @@ class BrowserHub:
             return page
 
         # 每次创建新页面都在新窗口打开，彻底杜绝混入用户日常标签页
+        # 唯一标记 URL：之后仅按 page.url 定位，不触碰用户任何标签
+        marker = f"about:blank#polaris-{uuid.uuid4().hex}"
         cdp = await self.browser.new_browser_cdp_session()
         try:
             res = await cdp.send(
                 "Target.createTarget",
-                {"url": "about:blank", "newWindow": True, "background": False},
+                {"url": marker, "newWindow": True, "background": True},
             )
             target_id = res["targetId"]
         finally:
@@ -586,41 +582,44 @@ class BrowserHub:
         self.owned_targets.add(target_id)
         self.has_window = True
 
-        page = await self._find_page_by_target_id(target_id, timeout_s=5.0)
+        page = await self._find_page_by_marker(marker, timeout_s=5.0)
+        self._owned_pages[target_id] = page
         if url != "about:blank":
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         return page
+
+    async def _page_locked(self, unattended: bool = False) -> Page:
+        """page() 的无锁实现，调用方必须已持有 self._lock（asyncio.Lock 不可重入）。"""
+        if self.browser is None or not self.browser.is_connected():
+            # 无人值守检查：若当前后端不支持静默连接则拒绝发起连接
+            if self.backend is None:
+                self.backend, self.backend_reason = await select_backend()
+                if hasattr(self.backend, "set_disconnect_callback"):
+                    self.backend.set_disconnect_callback(self._on_browser_disconnected)
+
+            if unattended and not self.backend.unattended_ok():
+                raise HubError(
+                    "needs_user_approval",
+                    "请在 Chrome 弹窗中允许一次远程调试，或安装 Polaris Browser Bridge 扩展实现免弹窗",
+                )
+            await self._ensure_connected()
+
+        if self.work_page is None or self.work_page.is_closed():
+            self.work_page = await self._create_owned_page_locked()
+        return self.work_page
 
     async def page(self, *, unattended: bool = False) -> Page:
         """获取复用的工作页，未连接时建立连接。"""
         self.mark_activity()
         async with self._lock:
-            if self.browser is None or not self.browser.is_connected():
-                # 无人值守检查：若当前后端不支持静默连接则拒绝发起连接
-                if self.backend is None:
-                    self.backend, self.backend_reason = await select_backend()
-                    if hasattr(self.backend, "set_disconnect_callback"):
-                        self.backend.set_disconnect_callback(
-                            self._on_browser_disconnected
-                        )
-
-                if unattended and not self.backend.unattended_ok():
-                    raise HubError(
-                        "needs_user_approval",
-                        "请在 Chrome 弹窗中允许一次远程调试，或安装 Polaris Browser Bridge 扩展实现免弹窗",
-                    )
-                await self._ensure_connected()
-
-            if self.work_page is None or self.work_page.is_closed():
-                self.work_page = await self._create_owned_page_locked()
-            return self.work_page
+            return await self._page_locked(unattended)
 
     async def new_owned_page(self, url: str = "about:blank") -> Page:
         """创建一个新的专属标签页，与用户日常标签隔离。"""
         self.mark_activity()
         async with self._lock:
             if self.backend and self.backend.name == "extension":
-                p = await self.page()
+                p = await self._page_locked()
                 if url != "about:blank":
                     await p.goto(url, wait_until="domcontentloaded", timeout=30000)
                 return p
@@ -637,21 +636,10 @@ class BrowserHub:
                 return []
             if self.backend and self.backend.name == "extension":
                 return [p for p in self.browser.contexts[0].pages if not p.is_closed()]
-            res = []
-            for p in self.browser.contexts[0].pages:
-                if p.is_closed():
-                    continue
-                try:
-                    s = await p.context.new_cdp_session(p)
-                    info = await s.send("Target.getTargetInfo")
-                    await s.detach()
-                    tid = info.get("targetInfo", {}).get("targetId")
-                    if tid in self.owned_targets:
-                        res.append(p)
-                except (PwError, OSError):
-                    logger.debug("获取页面 targetId 失败，忽略该页")
-                    continue
-            return res
+            # 直接返回自建页字典中未关闭者，不遍历用户日常标签
+            for tid in [t for t, p in self._owned_pages.items() if p.is_closed()]:
+                del self._owned_pages[tid]
+            return list(self._owned_pages.values())
 
     async def status(self) -> dict[str, Any]:
         """汇总当前 BrowserHub 的运行时状态。"""
