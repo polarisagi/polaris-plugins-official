@@ -580,7 +580,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mcp", specifier = ">=1.27.2" },
+    { name = "mcp", specifier = ">=1.27.2,<2" },
     { name = "patchright", specifier = ">=1.55" },
     { name = "playwright", specifier = ">=1.40.0" },
     { name = "websockets", specifier = ">=13.0" },
