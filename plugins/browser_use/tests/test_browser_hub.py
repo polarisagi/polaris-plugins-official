@@ -156,3 +156,16 @@ async def test_page_unattended_refused_without_connect() -> None:
 
 def test_module_has_no_target_id_scan() -> None:
     assert not hasattr(bh.BrowserHub, "_find_page_by_target_id")
+
+
+def test_fallback_ws_url_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """端口文件不可读时，环境变量优先作为兜底调试端点。"""
+    monkeypatch.setenv("POLARIS_BROWSER_CDP_URL", "ws://127.0.0.1:1/devtools/browser/x")
+    assert bh.fallback_ws_url() == "ws://127.0.0.1:1/devtools/browser/x"
+
+
+def test_fallback_ws_url_none_when_port_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """无环境变量且 9222 未监听时返回 None。"""
+    monkeypatch.delenv("POLARIS_BROWSER_CDP_URL", raising=False)
+    monkeypatch.setattr(bh, "DEFAULT_TOGGLE_PORT", 1)
+    assert bh.fallback_ws_url() is None

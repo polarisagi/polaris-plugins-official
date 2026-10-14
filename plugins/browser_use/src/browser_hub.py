@@ -118,6 +118,28 @@ def read_devtools_ws_url(path: Path) -> str | None:
         return None
 
 
+DEFAULT_TOGGLE_PORT = 9222
+
+
+def fallback_ws_url() -> str | None:
+    """端口文件不可读时的兜底（如 macOS 沙盒/隐私保护使 Chrome 数据目录不可访问）。
+
+    优先取环境变量 POLARIS_BROWSER_CDP_URL；否则探测本机 127.0.0.1:9222 是否在监听，
+    监听则使用无 id 的浏览器级端点 /devtools/browser（Chrome 的 inspect 开关模式支持，
+    仍需用户在弹窗中点击允许）。
+    """
+    env = os.environ.get("POLARIS_BROWSER_CDP_URL", "").strip()
+    if env:
+        return env
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", DEFAULT_TOGGLE_PORT), timeout=0.5):
+            return f"ws://127.0.0.1:{DEFAULT_TOGGLE_PORT}/devtools/browser"
+    except OSError:
+        return None
+
+
 def locate_chrome_executable() -> tuple[str | None, str]:
     """定位真实系统 Chrome 可执行文件，确保浏览器指纹与真实用户一致。"""
     sys_name = platform.system()
@@ -191,11 +213,11 @@ class CdpToggleBackend:
         self._on_disconnected_cb = cb
 
     def can_connect(self) -> bool:
-        """检查 DevToolsActivePort 是否存在且当前进程具有读取权限。"""
+        """检查 DevToolsActivePort 是否可读，或存在可用的兜底调试端点。"""
         p = find_devtools_port_file()
-        if not p:
-            return False
-        return read_devtools_ws_url(p) is not None
+        if p and read_devtools_ws_url(p) is not None:
+            return True
+        return fallback_ws_url() is not None
 
     def unattended_ok(self) -> bool:
         """未连接时禁止无人值守发起连接，防止半夜静默弹窗阻塞。"""
@@ -204,16 +226,15 @@ class CdpToggleBackend:
     async def connect(self, pw: Playwright) -> Browser:
         """通过 CDP 连接至日常 Chrome。"""
         p = find_devtools_port_file()
-        if not p:
-            raise HubError(
-                "attach_failed",
-                "未找到日常 Chrome 的 DevToolsActivePort，请确认 Chrome 正在运行且已打开 chrome://inspect 远程调试开关",
-            )
-        ws_url = read_devtools_ws_url(p)
+        ws_url = read_devtools_ws_url(p) if p else None
+        if not ws_url:
+            ws_url = fallback_ws_url()
         if not ws_url:
             raise HubError(
                 "attach_failed",
-                f"无法读取 Chrome 调试端口文件 ({p})，若在 macOS 上请确认终端具备完全磁盘访问权限或使用 managed 专用配置",
+                "无法获得 Chrome 调试端点：未找到/无法读取 DevToolsActivePort，且 127.0.0.1:9222 未监听。"
+                "请确认 Chrome 正在运行并已打开 chrome://inspect 远程调试开关；"
+                "macOS 上也可设置环境变量 POLARIS_BROWSER_CDP_URL，或使用 managed 专用配置",
             )
 
         # 60 秒超时时间供用户在弹窗中点击「允许」
