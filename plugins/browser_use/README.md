@@ -21,14 +21,32 @@ Polaris 官方浏览器自动化与结构化采集插件。
 
 ---
 
-## 日常 Chrome 开关开启步骤 (CDP Toggle 模式)
+## 安装扩展（推荐，一次性，支持免弹窗无人值守）
+
+为了彻底解决日常 Chrome 每次连接都需要用户在弹窗中点击「允许」的问题，推荐安装官方配套的轻量级 MV3 扩展 **Polaris Browser Bridge**（纯 JS，无任何外部构建依赖与敏感权限）：
+
+1. **加载已解压的扩展程序**：
+   - 打开日常使用的 Chrome 浏览器，在地址栏输入 `chrome://extensions` 并回车；
+   - 开启右上角的 **「开发者模式 (Developer mode)」**；
+   - 点击左上角的 **「加载已解压的扩展程序 (Load unpacked)」**；
+   - 选择本插件的 `extension` 目录（可调用 `browser_status` 工具，返回结果中的 `extension_dir` 即为完整绝对路径）。
+2. **配对授权**：
+   - 对 Polaris 说「查看浏览器状态」或调用 `browser_status`，复制返回的 `bridge_token`（同时保存在 `~/.config/polaris-plugins/browser/bridge_token`）；
+   - 点击 Chrome 工具栏上的 Polaris Browser Bridge 图标打开选项页，粘贴配对令牌并点击保存。
+3. **验证生效**：
+   - 再次调用 `browser_status`，`backend` 将显示为 `extension`。
+   - **安全提示**：被附着的标签页顶部会显示 Chrome 官方强制安全横幅「Polaris Browser Bridge 已开始调试此浏览器」，空闲 10 分钟后自动释放并消失；所有操作均在独立窗口完成，不触碰任何用户已有标签页。
+
+---
+
+## 日常 Chrome 开关开启步骤 (CDP Toggle 备用模式)
 
 1. 打开平时使用的日常 Chrome 浏览器；
 2. 在地址栏输入并回车：`chrome://inspect`；
 3. 确保页面顶部的 **「Discover network targets」** 处于开启状态；
 4. 当首次被 Polaris 附着时，Chrome 顶部会出现「允许远程调试」提示，点击 **「允许」** 即可。
 
-> **提示**：如果希望定时任务全自动无人值守执行且不再弹出提示，请安装 Polaris Browser Bridge 扩展。
+> **提示**：如果希望定时任务全自动无人值守执行且不再弹出提示，强烈推荐安装上述 Polaris Browser Bridge 扩展。
 
 ---
 

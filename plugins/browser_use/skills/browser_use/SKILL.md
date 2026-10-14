@@ -51,6 +51,9 @@ capability: read-write
 
 本插件支持多后端隔离运行，当工具返回 `ok: false` 时，按错误码进行标准恢复：
 
+- **`attach_failed`**：
+  - *原因*：浏览器附着失败。可能因日常 Chrome 尚未开启 `chrome://inspect` 远程调试开关、未安装扩展且缺少 DevToolsActivePort 权限，或扩展尚未完成配对。
+  - *对用户话术*：未能连接到您的浏览器。建议在 Chrome 打开 `chrome://extensions` 加载已解压扩展（目录可通过 `browser_status` 获取），并粘贴配对令牌以开启免弹窗全自动连接；或在 Chrome 打开 `chrome://inspect` 确保远程调试开关已开启。
 - **`needs_user_approval`**：
   - *原因*：使用日常 Chrome (CDP 开关) 时，Chrome 136+ 强制要求用户在弹窗中允许远程调试。
   - *对用户话术*：请在 Chrome 弹窗中点击一次「允许远程调试」，或安装 Polaris Browser Bridge 扩展实现免弹窗无人值守。
