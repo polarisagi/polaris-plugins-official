@@ -18,7 +18,6 @@ import time
 from pathlib import Path
 
 import pytest
-from src.utils.browser_hub import HubError
 from src.ratelimit import (
     Limits,
     acquire,
@@ -26,6 +25,7 @@ from src.ratelimit import (
     is_in_active_hours,
     mark_blocked,
 )
+from src.utils.browser_hub import HubError
 
 
 def test_active_hours() -> None:

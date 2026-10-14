@@ -21,9 +21,9 @@ from urllib.parse import quote
 from patchright.async_api import Error as PwError
 from patchright.async_api import Page, Response
 
+from ..ratelimit import acquire, mark_blocked
 from ..utils.browser_hub import HubError, get_hub
 from ..utils.extract import extract_structured
-from ..ratelimit import acquire, mark_blocked
 from .normalize import get_dot_path, normalize_items
 from .recipe import Action, BlockSignals, CssExtract, Recipe, Step, XhrExtract
 
@@ -208,7 +208,7 @@ async def run_harvest(
     action = recipe.actions.get(action_name)
     if not action:
         raise HubError(
-            "invalid_args", f"站点 {recipe.site.id} 不支持动作 '{action_name}'"
+            "unsupported_action", f"站点 {recipe.site.id} 不支持动作 '{action_name}'"
         )
 
     call_params = params or {}

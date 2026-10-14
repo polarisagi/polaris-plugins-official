@@ -1,6 +1,46 @@
-# social — Polaris 社交媒体插件
+# Polaris Social（polaris-social）— 社交平台读写插件 (v3.0.0)
 
-通过 CDP 连接已登录的 Chrome 浏览器，对多平台社交媒体执行全自动操作。
+读与写同处一个插件：复用你已登录的 Chrome，读取知乎 / X / 微博 / 小红书的搜索、热榜、用户动态与帖文正文，
+并在多平台发帖与互动。**读取与发帖、互动共享同一平台的限速与风控熔断**（SQLite 跨进程），
+一边采集一边发帖时频率不会叠加。
+
+> 原 `social_poster` 已更名为 `social`（MCP 服务器 `polaris-social`）；原 `browser_use` 中的
+> `harvest` / `harvest_recipes` / `harvest_selftest` 已迁入本插件，对应 `social_search` / `social_hot` /
+> `social_feed` / `social_platforms` / `social_selftest`。
+
+## 读工具（均声明 `readOnlyHint` + `openWorldHint`）
+
+| Tool | 说明 |
+|------|------|
+| `social_platforms` | 列出平台、读动作与参数、配方状态（beta/stable）、登录态缓存、限速余量 |
+| `social_search(platform, query, max_items=20)` | 关键词搜索，返回标准化条目 |
+| `social_hot(platform, max_items=20)` | 热榜（知乎、微博）；无该动作返回 `unsupported_action` |
+| `social_feed(platform, handle="", max_items=20)` | 用户公开动态（X）；无该动作返回 `unsupported_action` |
+| `social_read(url, max_chars=8000, offset=0)` | 在自建页打开帖文/文章并抽取正文 Markdown，支持分页；按域名计入对应平台限速（未知域名用默认限速） |
+| `social_selftest(platform)` | 对该平台全部读动作做最小自测，报告字段完整率 |
+
+`platform` 取值：`zhihu`、`x`、`weibo`、`xiaohongshu`（站点配方见 `recipes/*.toml`，用户可在
+`~/.config/polaris-plugins/browser/recipes/` 覆盖）。统一返回 `{"ok": true, ...}` 或
+`{"ok": false, "error": {"code", "message"}}`。常见错误码：`unsupported_action`、`not_logged_in`、
+`needs_user_approval`、`rate_limited`、`cooling_down`、`out_of_hours`、`blocked`、`invalid_args`。
+
+## 共享限速
+
+- 读取与写入按**平台**计数：写工具里的 `twitter` 与读工具里的 `x` 是同一把键。
+- 有配方的平台使用配方的 `[limits]`；没有配方的平台（instagram、facebook、douyin、wechat、tiktok、linkedin、threads）
+  及未知域名使用保守默认值：最小间隔 10 秒、每小时 20 次、每天 60 次。
+- 写工具（`auto_post`、`like_post`、`send_dm` 等）执行前先占用名额，被限速或处于熔断冷却期时**返回错误码而不执行**；
+  `run_scheduled_posts` 遇到限速时任务保持 pending，下次再执行。
+- 遇到验证码 / 403 / 429 等风控信号时自动进入冷却，期间读写都被拒绝。**严禁尝试绕过。**
+
+## 真机冒烟（手工运行，不进 CI）
+
+```bash
+cd plugins/social && POLARIS_BROWSER_BACKEND=cdp uv run python scripts/live_smoke.py | tee /tmp/live_smoke.log
+```
+
+仅只读、单连接、每站 ≤15 次导航；结果写入 `/tmp/polaris-vault-smoke`，不碰真实资料库。
+
 
 ## 支持平台
 
@@ -19,18 +59,9 @@
 
 ## 快速开始
 
-**1. 以调试模式启动 Chrome（必须）**
+**1. 连接你的日常 Chrome（推荐安装 Polaris Browser Bridge 扩展，见 browser_use 插件 README；或使用 chrome://inspect 开关）**
 
-```bash
-# macOS
-open -a "Google Chrome" --args --remote-debugging-port=9222
-
-# Windows
-chrome.exe --remote-debugging-port=9222
-
-# Linux
-google-chrome --remote-debugging-port=9222
-```
+无权读取 Chrome 数据目录中的 `DevToolsActivePort` 时（macOS 可能需要授予该进程访问权限），请改用扩展，或设置环境变量 `POLARIS_BROWSER_CDP_URL` 显式指定 CDP 端点。
 
 **2. 在 Chrome 中手动登录各平台账号**
 
@@ -38,7 +69,7 @@ google-chrome --remote-debugging-port=9222
 
 ```bash
 cd plugins/social
-uv run src/main.py
+uv run python -m src.main
 ```
 
 ## MCP Tools 总览
@@ -123,8 +154,15 @@ uv run src/main.py
 
 ```
 social/
+├── recipes/                 # 站点配方（zhihu/x/weibo/xiaohongshu）
+├── scripts/live_smoke.py    # 真机冒烟
+├── tests/                   # 配方 / 采集 / 限速 / 闸门单测（离线）
 ├── src/
 │   ├── main.py              # MCP server 入口（所有 tools）
+│   ├── gate.py              # 读写共享限速闸门
+│   ├── ratelimit.py         # 跨进程 SQLite 限速与熔断
+│   ├── tools_social.py      # social_* 读工具实现
+│   ├── harvest/             # 配方采集引擎
 │   ├── content_manager.py   # 格式化、截断、话题标签
 │   ├── scheduler.py         # 定时发布队列
 │   ├── utils/

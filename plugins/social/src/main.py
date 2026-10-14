@@ -1,17 +1,99 @@
 """
-Polaris Social Poster — MCP server entry point.
+Polaris Social — MCP server entry point (polaris-social).
 
-Supported platforms:
+读写同处一个插件：各平台的读（social_search / social_hot / social_feed / social_read /
+social_platforms / social_selftest）与写（发帖、互动等）共享按平台计数的限速与风控熔断。
+
+Supported write platforms:
   twitter, instagram, facebook, weibo, xiaohongshu, douyin, wechat,
   tiktok, linkedin, threads
+Supported read platforms (recipes):
+  zhihu, x, weibo, xiaohongshu
 """
 
-from typing import Optional
 import asyncio
 import os
+from typing import Annotated, Any, Literal, Optional
+
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+from pydantic import Field
+
+from .gate import rate_limited_write
+from .tools_social import (
+    tool_social_feed,
+    tool_social_hot,
+    tool_social_platforms,
+    tool_social_read,
+    tool_social_search,
+    tool_social_selftest,
+)
 
 mcp = FastMCP("polaris-social")
+
+# 读工具：只读、会访问外部网站
+READ_ANN = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
+# 纯本地只读（不访问外部网站）
+LOCAL_READ_ANN = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+# 写工具：会改变外部平台状态，且可能不可逆
+WRITE_ANN = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+
+# 配方内置的可读平台（须与 recipes/*.toml 的 site.id 一致，测试有校验）
+ReadPlatform = Literal["zhihu", "x", "weibo", "xiaohongshu"]
+MaxItems = Annotated[int, Field(ge=1, le=100)]
+
+# ─── ⓪ Read tools (shared rate limit with write tools) ───────────────────────
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_platforms() -> dict[str, Any]:
+    """列出可读平台、读动作及参数、配方状态(beta/stable)、登录态缓存与限速余量。"""
+    return await tool_social_platforms()
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_search(
+    platform: ReadPlatform,
+    query: Annotated[str, Field(min_length=1, max_length=200)],
+    max_items: MaxItems = 20,
+) -> dict[str, Any]:
+    """按关键词搜索平台内容，返回标准化条目列表（id/url/title/author/published_at/excerpt/metrics）。"""
+    return await tool_social_search(platform, query, max_items)
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_hot(
+    platform: ReadPlatform, max_items: MaxItems = 20
+) -> dict[str, Any]:
+    """获取平台热榜；平台无热榜动作时返回错误码 unsupported_action。"""
+    return await tool_social_hot(platform, max_items)
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_feed(
+    platform: ReadPlatform,
+    handle: Annotated[str, Field(max_length=100)] = "",
+    max_items: MaxItems = 20,
+) -> dict[str, Any]:
+    """获取指定用户(handle，无需 @)的公开动态；平台无该动作时返回错误码 unsupported_action。"""
+    return await tool_social_feed(platform, handle, max_items)
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_read(
+    url: Annotated[str, Field(min_length=8, max_length=2048)],
+    max_chars: Annotated[int, Field(ge=200, le=50000)] = 8000,
+    offset: Annotated[int, Field(ge=0)] = 0,
+) -> dict[str, Any]:
+    """在自建页打开帖子/文章并抽取正文 Markdown，支持字符分页；计入该域名对应平台的限速。"""
+    return await tool_social_read(url, max_chars, offset)
+
+
+@mcp.tool(annotations=READ_ANN)
+async def social_selftest(platform: ReadPlatform) -> dict[str, Any]:
+    """对指定平台的全部读动作做一次最小自测，报告字段完整率与实际使用的提取方式。"""
+    return await tool_social_selftest(platform)
+
 
 # ─── Adapter registry ─────────────────────────────────────────────────────────
 
@@ -71,7 +153,8 @@ async def _get_adapter(platform: str):
 # ─── ① Publishing ─────────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def auto_post(
     platform: str,
     content: str,
@@ -103,7 +186,7 @@ async def auto_post(
         return f"❌ Failed to post to {platform}: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
 async def batch_post(
     platforms: list[str],
     content: str,
@@ -126,7 +209,7 @@ async def batch_post(
     return results
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
 async def post_video(
     platform: str,
     video_path: str,
@@ -153,7 +236,8 @@ async def post_video(
     return await auto_post(platform, description, media)
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def post_story(
     platform: str,
     media_path: str,
@@ -179,7 +263,8 @@ async def post_story(
         return f"❌ Failed to post story to {platform}: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def post_thread(
     platform: str,
     tweets: list[str],
@@ -210,7 +295,7 @@ async def post_thread(
 # ─── ② Scheduled Publishing ───────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
 async def schedule_post(
     platform: str,
     content: str,
@@ -238,7 +323,7 @@ async def schedule_post(
     return f"✅ Post scheduled (task_id={task_id}) for {scheduled_time} on {platform}."
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 async def list_scheduled_posts(platform: Optional[str] = None):
     """
     List all pending scheduled posts.
@@ -254,7 +339,7 @@ async def list_scheduled_posts(platform: Optional[str] = None):
     return tasks
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
 async def cancel_scheduled_post(task_id: str):
     """
     Cancel a scheduled post by its task_id.
@@ -269,7 +354,7 @@ async def cancel_scheduled_post(task_id: str):
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
 async def run_scheduled_posts():
     """
     Execute all scheduled posts whose scheduled_time has passed.
@@ -295,6 +380,10 @@ async def run_scheduled_posts():
                 r = await auto_post(
                     task["platform"], task["content"], task["media_paths"]
                 )
+            if isinstance(r, dict) and r.get("ok") is False:
+                # 被限速/熔断：保持 pending，下次调用再执行
+                results[task["id"]] = r
+                continue
             scheduler.mark_done(task["id"], True)
             results[task["id"]] = r
         except Exception as e:
@@ -306,7 +395,8 @@ async def run_scheduled_posts():
 # ─── ③ Post Management ────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def delete_post(platform: str, post_identifier: str):
     """Delete a specific post. post_identifier is usually the post URL."""
     adapter = await _get_adapter(platform)
@@ -319,7 +409,8 @@ async def delete_post(platform: str, post_identifier: str):
         return f"❌ Failed to delete post on {platform}: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def edit_post(platform: str, post_identifier: str, new_content: str):
     """Edit an existing post (supported: twitter with Premium, weibo, linkedin)."""
     adapter = await _get_adapter(platform)
@@ -348,7 +439,8 @@ async def get_my_posts(platform: str, limit: int = 10):
         return [{"error": str(e)}]
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def pin_post(platform: str, post_identifier: str):
     """Pin a post to the top of your profile."""
     adapter = await _get_adapter(platform)
@@ -363,7 +455,8 @@ async def pin_post(platform: str, post_identifier: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def save_draft(
     platform: str, content: str, media_paths: Optional[list[str]] = None
 ):
@@ -395,7 +488,8 @@ async def get_comments(platform: str, post_identifier: str) -> list[dict]:
         return [{"error": str(e)}]
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def reply_comment(
     platform: str, post_identifier: str, comment_id: str, text: str
 ):
@@ -410,7 +504,8 @@ async def reply_comment(
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def delete_comment(platform: str, post_identifier: str, comment_id: str):
     """Delete or hide a comment."""
     adapter = await _get_adapter(platform)
@@ -426,7 +521,8 @@ async def delete_comment(platform: str, post_identifier: str, comment_id: str):
 # ─── ⑤ Engagement ────────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def like_post(platform: str, post_identifier: str):
     """Like / heart a post."""
     adapter = await _get_adapter(platform)
@@ -441,7 +537,8 @@ async def like_post(platform: str, post_identifier: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def unlike_post(platform: str, post_identifier: str):
     """Remove a like from a post."""
     adapter = await _get_adapter(platform)
@@ -456,7 +553,8 @@ async def unlike_post(platform: str, post_identifier: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def repost(platform: str, post_identifier: str):
     """Retweet / repost / share a post without comment."""
     adapter = await _get_adapter(platform)
@@ -471,7 +569,8 @@ async def repost(platform: str, post_identifier: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def quote_post(platform: str, post_identifier: str, comment: str):
     """Quote-repost with an added comment (Twitter quote-tweet, LinkedIn quote)."""
     adapter = await _get_adapter(platform)
@@ -544,7 +643,8 @@ async def get_user_profile(platform: str, username: str) -> dict:
         return {"error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def follow_user(platform: str, username: str):
     """Follow a user on a platform."""
     adapter = await _get_adapter(platform)
@@ -559,7 +659,8 @@ async def follow_user(platform: str, username: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def unfollow_user(platform: str, username: str):
     """Unfollow a user on a platform."""
     adapter = await _get_adapter(platform)
@@ -574,7 +675,8 @@ async def unfollow_user(platform: str, username: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def block_user(platform: str, username: str):
     """Block a user on a platform."""
     adapter = await _get_adapter(platform)
@@ -589,7 +691,8 @@ async def block_user(platform: str, username: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def mute_user(platform: str, username: str):
     """Mute a user (hide their content without unfollowing)."""
     adapter = await _get_adapter(platform)
@@ -604,7 +707,8 @@ async def mute_user(platform: str, username: str):
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ANN)
+@rate_limited_write
 async def send_dm(platform: str, username: str, text: str):
     """Send a direct message / private message to a user."""
     adapter = await _get_adapter(platform)
@@ -684,7 +788,7 @@ async def get_mentions(platform: str, limit: int = 20) -> list[dict]:
 # ─── ⑩ Content Helpers ───────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 def get_platform_skill(platform: str) -> str:
     """
     Return the content creation and compliance guidelines for a platform.
@@ -714,7 +818,7 @@ def get_platform_skill(platform: str) -> str:
         return f"Failed to load skill file: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 def get_content_template(template_type: str) -> str:
     """
     Return a post content template.
@@ -733,7 +837,7 @@ def get_content_template(template_type: str) -> str:
         )
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 def suggest_hashtags(content: str, platform: str, max_tags: int = 5) -> list[str]:
     """
     Suggest relevant hashtags for the given content and platform.
@@ -748,7 +852,7 @@ def suggest_hashtags(content: str, platform: str, max_tags: int = 5) -> list[str
     return _suggest(content, platform, max_tags)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 def split_text_into_thread(text: str, max_chars: int = 260) -> list[str]:
     """
     Split long text into tweet-sized chunks suitable for post_thread.
@@ -800,7 +904,7 @@ async def search_free_image(query: str) -> str:
         return f"Failed to search/download image: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ANN)
 def list_supported_platforms() -> dict:
     """Return all supported platforms and their implemented capabilities."""
     return {
