@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 import pytest
-from src.browser_hub import HubError
+from src.utils.browser_hub import HubError
 from src.ratelimit import (
     Limits,
     acquire,

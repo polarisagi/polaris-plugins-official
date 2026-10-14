@@ -1,7 +1,7 @@
 {
   "name": "polaris-browser-use",
-  "version": "2.0.0",
-  "description": "复用你已登录的 Chrome；结构化采集；省 token。",
+  "version": "2.1.0",
+  "description": "复用你已登录的 Chrome；通用网页阅读与交互；省 token。",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -10,23 +10,30 @@
   "homepage": "https://polarisagi.online/",
   "repository": "https://github.com/polarisagi/polaris-plugins-official",
   "license": "AGPL-3.0",
-  "keywords": ["browser", "patchright", "dom-extraction", "harvest", "mcp"],
+  "keywords": [
+    "browser",
+    "patchright",
+    "dom-extraction",
+    "mcp"
+  ],
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
     "displayName": "Browser Use (DOM Extraction)",
-    "shortDescription": "复用你已登录的 Chrome；结构化采集；省 token。",
-    "longDescription": "Polaris 官方浏览器自动化与结构化采集插件。复用你日常已登录的 Chrome 浏览器会话，支持 0 token 网络拦截采集与现代化省 token DOM 快照交互。严格隔离在 Polaris 自建窗口内操作，不打扰用户其他标签。\n\nRequires: Python ≥3.14, Chrome.",
+    "shortDescription": "复用你已登录的 Chrome；通用网页阅读与交互；省 token。",
+    "longDescription": "Polaris 官方通用浏览器插件。复用你日常已登录的 Chrome 浏览器会话，提供省 token 的正文读取与 DOM 快照交互；严格隔离在 Polaris 自建窗口内操作，不打扰用户其他标签。已知社交平台请使用 polaris-social 插件。\n\nRequires: Python ≥3.14, Chrome.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://polarisagi.online/",
     "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
     "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
     "defaultPrompt": [
-      "查看当前浏览器状态与支持的采集配方。",
-      "打开 https://example.com 并阅读正文。",
-      "采集知乎热门话题。"
+      "查看当前浏览器状态。",
+      "打开 https://example.com 并阅读正文。"
     ]
   }
 }

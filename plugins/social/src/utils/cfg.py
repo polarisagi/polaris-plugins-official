@@ -1,7 +1,7 @@
 """配置根路径与环境变量约定。
 
 为何独立为 cfg 模块：
-跨模块（hub、ratelimit、harvest 等）以及跨插件（social_poster 等）
+跨模块（hub、ratelimit、harvest 等）以及跨插件（social 等）
 需要统一读取操作系统标准配置目录与通用环境变量，避免散落在各处产生路径分歧。
 """
 

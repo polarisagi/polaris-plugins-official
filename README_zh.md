@@ -29,16 +29,23 @@
 
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
-**版本**：`v2.0.0`  
-**能力**：多后端隔离（扩展桥接 / CDP / 托管 profile）、DOM 快照、低 Token 精炼阅读、结构化配方采集（知乎/小红书/X/微博）  
+**版本**：`v2.1.0`  
+**能力**：多后端隔离（扩展桥接 / CDP / 托管 profile）、DOM 快照、低 Token 精炼阅读与交互（平台无关）  
 **底层驱动**：Python、Patchright 及 `uv`  
-**特点**：0 Token 结构化数据拦截采集、免弹窗无人值守扩展中继、全局频次限速与风控熔断保护
+**特点**：免弹窗无人值守扩展中继；已知社交平台请使用 `polaris-social`
 
 ### 3. [Knowledge Base (Python)](plugins/knowledge_base)
 
 **功能**：列出目录内容、读取本地文件（用于 RAG 等）  
 **底层驱动**：Python 原生 `os` 和 `pathlib` 模块  
 **亮点**：纯 Python 编写，零外部依赖，支持 `POLARIS_KB_ALLOWED_DIR` 环境变量进行路径沙盒隔离白名单
+
+
+### 4. [Social (Python)](plugins/social)
+
+**版本**：`v3.0.0`（原 `social_poster`，MCP 服务器 `polaris-social`）  
+**能力**：知乎 / X / 微博 / 小红书等平台的读（`social_search` / `social_hot` / `social_feed` / `social_read` / `social_platforms` / `social_selftest`）与写（发帖、互动、定时）  
+**特点**：0 Token 的 XHR 拦截站点配方；读写共享同一平台的限速与风控熔断
 
 ---
 
@@ -101,6 +108,12 @@ plugins/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py
+    pyproject.toml
+  social/
+    .codex-plugin/plugin.json
+    .mcp.json
+    src/main.py
+    recipes/
     pyproject.toml
   knowledge_base/
     .codex-plugin/plugin.json

@@ -1,4 +1,4 @@
-# social_poster — Polaris 社交媒体插件
+# social — Polaris 社交媒体插件
 
 通过 CDP 连接已登录的 Chrome 浏览器，对多平台社交媒体执行全自动操作。
 
@@ -37,7 +37,7 @@ google-chrome --remote-debugging-port=9222
 **3. 运行插件**
 
 ```bash
-cd plugins/social_poster
+cd plugins/social
 uv run src/main.py
 ```
 
@@ -122,7 +122,7 @@ uv run src/main.py
 ## 目录结构
 
 ```
-social_poster/
+social/
 ├── src/
 │   ├── main.py              # MCP server 入口（所有 tools）
 │   ├── content_manager.py   # 格式化、截断、话题标签

@@ -15,7 +15,7 @@ uv run plugins/computer_use/src/main.py
 uv run plugins/browser_use/src/main.py
 uv run plugins/knowledge_base/src/main.py
 uv run plugins/system_info/src/main.py
-uv run plugins/social_poster/src/main.py
+(cd plugins/social && uv run python -m src.main)
 ```
 
 或进入插件目录执行：
@@ -60,7 +60,7 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 **MCP 实现方式：**
 - 手动 stdio 循环（`sys.stdin`）：`computer_use`、`knowledge_base`、`system_info`
-- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_use`、`social_poster`
+- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_use`、`social`
 
 ---
 
@@ -95,9 +95,9 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 ---
 
-### browser_use — 浏览器自动化插件
+### browser_use — 通用浏览器插件（v2.1.0）
 
-使用 `FastMCP` + Playwright。启动时尝试通过 CDP 连接已运行的 Chrome 或 Edge（读取 `DevToolsActivePort`），失败则启动新的 headless=False Chromium 实例。暴露的工具：`navigate`、`get_interactive_dom`、`action_by_id`、`scroll_page`、`go_back`、`close_tab`、`get_page_content`、`get_current_state`。
+使用 `FastMCP` + Patchright。只做通用浏览器能力与浏览器连接（BrowserHub：扩展桥接 / CDP / 托管 profile），**不含任何平台知识、站点配方或限速**。暴露工具：`browser_open`、`browser_read`、`browser_snapshot`、`browser_act`、`browser_scroll`、`browser_extract`、`browser_tabs`、`browser_status`。已知社交平台请使用 `social` 插件。`POLARIS_BROWSER_CDP_URL` 可显式指定 CDP 端点；读不到 `DevToolsActivePort` 时不再猜测端口。
 
 ---
 
@@ -113,15 +113,15 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 ---
 
-### social_poster — 多平台社交媒体发帖插件
+### social — 社交平台读写插件（v3.0.0，MCP 服务器 `polaris-social`）
 
-使用 `FastMCP` + Playwright（CDP 连接已运行的浏览器）。支持 10 个平台：`twitter`、`instagram`、`facebook`、`weibo`、`xiaohongshu`、`douyin`、`wechat`、`tiktok`、`linkedin`、`threads`。
+使用 `FastMCP` + Patchright，复用 `utils/browser_hub.py`（与 browser_use 逐字节一致，`check.sh` 校验）。读与写同处一个插件，**按平台共享限速与风控熔断**（`src/ratelimit.py`，SQLite 跨进程；`src/gate.py` 把写工具接入同一把键，`twitter` 与读侧的 `x` 同键）。
 
-暴露 29 个工具，覆盖：发布（`auto_post`、`batch_post`、`post_video`、`post_thread`）、定时（`schedule_post`）、管理（`delete_post`、`edit_post`）、评论、互动、搜索、用户操作、数据分析等完整生命周期。
-
-**平台适配：** 每个平台有独立 Adapter 类（`src/adapters/`）。调用任何工具前，**必须先执行 `get_platform_skill(platform)`** 读取平台内容规范，避免违规或限流。
-
-**技能文件：** 平台专项规范文件位于 `skills/social_poster/`（`xiaohongshu_skill.md`、`weibo_skill.md` 等），入口决策文件为 `skills/social_poster/SKILL.md`。
+- **读工具**（`readOnlyHint` + `openWorldHint`）：`social_platforms`、`social_search`、`social_hot`、`social_feed`、`social_read`、`social_selftest`。平台为配方站点枚举 `zhihu`/`x`/`weibo`/`xiaohongshu`（`recipes/*.toml`，XHR 拦截优先、CSS 兜底），配方缺动作返回 `unsupported_action`。采集引擎在 `src/harvest/`，工具实现在 `src/tools_social.py`。
+- **写工具**：`auto_post`、`batch_post`、`post_video`、`post_thread`、`like_post` 等 29 个原有工具，声明 `readOnlyHint=False, destructiveHint=True`；执行前经 `rate_limited_write` 占用名额，被限速时返回错误码而不执行。无配方平台使用保守默认限速（10 秒间隔、20 次/小时、60 次/天）。
+- 支持写入的平台：`twitter`、`instagram`、`facebook`、`weibo`、`xiaohongshu`、`douyin`、`wechat`、`tiktok`、`linkedin`、`threads`。每个平台有独立 Adapter（`src/adapters/`）；调用写工具前**必须先执行 `get_platform_skill(platform)`**。
+- 技能文件位于 `skills/social/`（入口 `SKILL.md`，平台规范 `*_skill.md`）。
+- 真机冒烟：`cd plugins/social && POLARIS_BROWSER_BACKEND=cdp uv run python scripts/live_smoke.py | tee /tmp/live_smoke.log`（只读、单连接）。
 
 ---
 

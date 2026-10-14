@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ..cfg import CFG, ENV_DEV
+from ..utils.cfg import CFG, ENV_DEV
 from .recipe import Recipe
 
 logger = logging.getLogger("polaris.harvest.loader")

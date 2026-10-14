@@ -1,0 +1,48 @@
+{
+  "name": "polaris-social",
+  "version": "3.0.0",
+  "description": "社交平台读写：知乎/X/微博/小红书的搜索、热榜、动态与正文读取（0 token 接口拦截优先），以及多平台发帖与互动；读写共享按平台的限速与风控熔断。",
+  "author": {
+    "name": "mrlaoliai",
+    "email": "polarisagi.online@gmail.com",
+    "url": "https://polarisagi.online/"
+  },
+  "homepage": "https://polarisagi.online/",
+  "repository": "https://github.com/polarisagi/polaris-plugins-official",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "social-media",
+    "harvest",
+    "auto-post",
+    "zhihu",
+    "twitter",
+    "weibo",
+    "xiaohongshu",
+    "douyin",
+    "wechat",
+    "instagram",
+    "facebook",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Polaris Social（社交平台读写）",
+    "shortDescription": "读取知乎/X/微博/小红书内容并跨平台发帖互动，读写共享限速。",
+    "longDescription": "Polaris 官方社交平台插件。读：social_search / social_hot / social_feed / social_read 复用你已登录的 Chrome，依据站点配方优先拦截页面 XHR JSON（0 token），社交内容读取与发帖共用同一平台限速与风控熔断。写：在 Twitter/X、微博、小红书、抖音、公众号、Instagram、Facebook 等平台发布、删除、评论、点赞与私信，并通过 get_platform_skill 读取各平台合规规范。\n\nRequires: Python ≥3.14, Chrome.",
+    "developerName": "mrlaoliai",
+    "category": "Social",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://polarisagi.online/",
+    "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
+    "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
+    "defaultPrompt": [
+      "搜索知乎上关于 AI Agent 的讨论并总结。",
+      "看看 X 上 OpenAI 最近发了什么。",
+      "把这段更新发到微博和小红书。"
+    ]
+  }
+}

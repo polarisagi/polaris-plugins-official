@@ -174,7 +174,9 @@ def test_no_guessed_fallback_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert bh.CdpToggleBackend().can_connect() is False
 
 
-async def test_connect_unreadable_port_file_message(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_connect_unreadable_port_file_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("POLARIS_BROWSER_CDP_URL", raising=False)
     monkeypatch.setattr(bh, "find_devtools_port_file", lambda: None)
     with pytest.raises(HubError) as ei:

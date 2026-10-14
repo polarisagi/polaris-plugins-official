@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "polaris-social-poster": {
-      "command": "uv",
-      "args": ["run", "src/main.py"],
-      "env": {}
-    }
-  }
-}

@@ -1,5 +1,5 @@
 ---
-name: social_poster
+name: social
 description: "Standard operating procedure for the social_poster MCP plugin — multi-platform social media content publishing and management."
 version: "1.0.0"
 tags:

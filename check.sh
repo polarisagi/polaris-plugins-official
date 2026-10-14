@@ -359,7 +359,7 @@ if [ -n "$TARGET" ]; then
   CONSISTENCY_STATUS="SKIP"
 else
   CONSISTENCY_STATUS="PASS"
-  for fname in browser_hub.py bridge_relay.py bridge_const.py cfg.py; do
+  for fname in browser_hub.py bridge_relay.py bridge_const.py cfg.py extract.py snapshot_js.py; do
     copies=()
     while IFS= read -r f; do
       [ -n "$f" ] && copies+=("$f")
@@ -416,7 +416,7 @@ for d in "${PLUGIN_DIRS[@]}"; do
 done
 printf "  %-18s" "$CONSISTENCY_ROW"
 cell "$CONSISTENCY_STATUS"
-echo -e "  (browser_hub / bridge_relay / bridge_const / cfg)"
+echo -e "  (browser_hub / bridge_relay / bridge_const / cfg / extract / snapshot_js)"
 
 echo ""
 echo -e "  ${GREEN}✔ 通过: ${PASS}${RESET}   ${RED}✘ 失败: ${FAIL}${RESET}   ${YELLOW}⊘ 跳过: ${SKIP}${RESET}"

@@ -21,8 +21,8 @@ from urllib.parse import quote
 from patchright.async_api import Error as PwError
 from patchright.async_api import Page, Response
 
-from ..browser_hub import HubError, get_hub
-from ..extract import extract_structured
+from ..utils.browser_hub import HubError, get_hub
+from ..utils.extract import extract_structured
 from ..ratelimit import acquire, mark_blocked
 from .normalize import get_dot_path, normalize_items
 from .recipe import Action, BlockSignals, CssExtract, Recipe, Step, XhrExtract

@@ -29,16 +29,23 @@
 
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
-**Version**: `v2.0.0`  
-**Capabilities**: Multi-backend browser isolation (Polaris Bridge extension / CDP / managed profile), DOM snapshot, low-token reading, structured site recipes (zhihu, xiaohongshu, x, weibo)  
+**Version**: `v2.1.0`  
+**Capabilities**: Multi-backend browser isolation (Polaris Bridge extension / CDP / managed profile), DOM snapshot, low-token reading and interaction — platform-agnostic  
 **Powered by**: Python, Patchright and `uv`  
-**Highlights**: Zero-token structured harvesting, unattended extension bridge, global rate limiting
+**Highlights**: Unattended extension bridge; for known social platforms use `polaris-social`
 
 ### 3. [Knowledge Base (Python)](plugins/knowledge_base)
 
 **Capabilities**: List directory contents, read file content for RAG  
 **Drivers**: Native Python `os` and `pathlib` modules  
 **Highlights**: Pure Python, zero external dependencies; `POLARIS_KB_ALLOWED_DIR` env var for path sandboxing
+
+
+### 4. [Social (Python)](plugins/social)
+
+**Version**: `v3.0.0` (formerly `social_poster`; MCP server `polaris-social`)  
+**Capabilities**: Read (`social_search` / `social_hot` / `social_feed` / `social_read` / `social_platforms` / `social_selftest`) and write (post, interact, schedule) for Zhihu, X, Weibo, Xiaohongshu and more  
+**Highlights**: Zero-token XHR-intercepting site recipes; reads and writes share one per-platform rate limit and block-signal cooldown
 
 ---
 
@@ -101,6 +108,12 @@ plugins/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP server config (command: uv)
     src/main.py
+    pyproject.toml
+  social/
+    .codex-plugin/plugin.json
+    .mcp.json
+    src/main.py
+    recipes/
     pyproject.toml
   knowledge_base/
     .codex-plugin/plugin.json

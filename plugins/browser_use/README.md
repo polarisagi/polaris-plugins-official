@@ -1,7 +1,9 @@
-# Polaris Browser Use MCP (v2.0.0)
+# Polaris Browser Use MCP (v2.1.0)
 
-Polaris 官方浏览器自动化与结构化采集插件。
-复用你日常已登录的 Chrome 浏览器会话，支持 0 token 网络拦截采集与现代化省 token DOM 快照交互。
+Polaris 官方通用浏览器自动化插件（打开、正文读取、快照、交互与浏览器连接）。
+复用你日常已登录的 Chrome 浏览器会话，支持现代化省 token DOM 快照交互。
+
+> 已知社交平台（知乎 / X / 微博 / 小红书等）的搜索、热榜、动态读取与发帖，请使用 **polaris-social** 插件的 `social_*` 工具；本插件不含任何平台知识、站点配方或限速。
 
 ---
 
@@ -14,10 +16,8 @@ Polaris 官方浏览器自动化与结构化采集插件。
 - **Chrome 136+ 兼容背景**：自 Chrome 136 起，Google 禁用了默认用户目录的 `--remote-debugging-port` 命令行参数。本插件创新性地采用 `DevToolsActivePort` 动态发现与扩展桥接技术，实现零配置安全附着。
 - **严格隐私隔离**：Polaris **只在自己创建的独立窗口内**操作，严禁读取或干扰用户的其他日常标签页。
 - **省 Token 设计**：
-  - `harvest`：已知站点通过配方与网络请求拦截直接获取结构化数据，步骤 0 token 消耗。
   - `browser_read`：文章智能提取、精简 Markdown、纯文本与超链列表，字符级透明分页。
   - `browser_snapshot`：参数化精炼语义编码（`e12 button "登录"`），拒绝 raw HTML 倾倒。
-- **跨进程全局限速**：基于 SQLite WAL 跨进程排队控制，支持时间段约束与遭遇验证码时的主动熔断冷却。
 
 ---
 
@@ -82,6 +82,6 @@ Polaris 官方浏览器自动化与结构化采集插件。
 | `browser_scroll` | 交互 | 平滑滚动页面并返回位置 |
 | `browser_extract` | 交互 | 基于 CSS 选择器批量结构化提取列表 |
 | `browser_tabs` | 交互 | 专属标签页列表、切换与关闭 |
-| `browser_status` | 状态 | 查看后端类型、连接健康度与各站点限速余量 |
-| `harvest` | 采集 | 站点配方结构化采集（0 token 拦截优先） |
-| `harvest_recipes` | 采集 | 发现当前已加载的站点采集能力与参数约束 |
+| `browser_status` | 状态 | 查看后端类型、连接健康度与已登录站点缓存 |
+
+> `POLARIS_BROWSER_CDP_URL`：显式指定 CDP 端点（如无权读取 Chrome 数据目录中的 `DevToolsActivePort` 时）；未设置且端口文件不可读时，请改用 Polaris Browser Bridge 扩展。

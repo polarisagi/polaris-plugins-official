@@ -17,7 +17,6 @@ from patchright.async_api import Page
 
 from .browser_hub import HubError, get_hub
 from .extract import extract_structured, read_page_content
-from .ratelimit import get_site_status
 from .snapshot_js import SCROLL_INFO_JS, SNAPSHOT_JS
 
 REF_PATTERN = re.compile(r"^e\d{1,5}$")
@@ -303,25 +302,6 @@ async def tool_browser_status() -> dict[str, Any]:
         hub = await get_hub()
         st = await hub.status()
 
-        # 补充各已知站点的限速余量与冷却状态
-        enriched_sites = []
-        for s in st.get("sites", []):
-            site_name = s.get("site")
-            if site_name:
-                rate_info = get_site_status(site_name)
-                enriched_sites.append(
-                    {
-                        "site": site_name,
-                        "logged_in": s.get("logged_in"),
-                        "remaining_hour": rate_info.get("remaining_hour"),
-                        "remaining_day": rate_info.get("remaining_day"),
-                        "cooling_until": rate_info.get("cooling_until"),
-                    }
-                )
-            else:
-                enriched_sites.append(s)
-
-        st["sites"] = enriched_sites
         return {"ok": True, **st}
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}

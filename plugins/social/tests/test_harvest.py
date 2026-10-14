@@ -6,7 +6,6 @@
 3. 点路径取值：支持数组下标与深层字典嵌套（如 a.b.0.c）
 4. 数据标准化：秒/毫秒时间戳转换、自然语言日期、URL 绝对化、HTML 标签剥离
 5. 分页函数：按字符切片、截断标志与哈希校验
-6. ref 正则校验：拒绝非 e<数字> 格式防注入
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from src.extract import paginate_content
 from src.harvest.loader import load_all_recipes
 from src.harvest.normalize import (
     get_dot_path,
@@ -24,7 +22,7 @@ from src.harvest.normalize import (
     strip_html,
 )
 from src.harvest.recipe import Recipe
-from src.tools_browser import REF_PATTERN
+from src.utils.extract import paginate_content
 
 
 def test_recipe_validation() -> None:
@@ -149,16 +147,6 @@ def test_paginate_content() -> None:
     assert next_off2 is None
 
 
-def test_ref_pattern() -> None:
-    assert REF_PATTERN.match("e1") is not None
-    assert REF_PATTERN.match("e80") is not None
-    assert REF_PATTERN.match("e99999") is not None
-    assert REF_PATTERN.match("e") is None
-    assert REF_PATTERN.match("e123456") is None
-    assert REF_PATTERN.match("e1; rm -rf /") is None
-    assert REF_PATTERN.match("button") is None
-
-
 def test_load_all_recipes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # 模拟 DEV=1 加载 _example.toml
     monkeypatch.setenv("POLARIS_BROWSER_DEV", "1")
@@ -173,8 +161,8 @@ async def test_run_harvest_page_failure_does_not_consume_ratelimit(
     """取页失败（needs_user_approval）时不应占用限速名额，且页面锁必须释放。"""
     import asyncio
 
-    from src.browser_hub import HubError
     from src.harvest import engine
+    from src.utils.browser_hub import HubError
 
     class FakeHub:
         def __init__(self) -> None:

@@ -19,8 +19,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .browser_hub import HubError
-from .cfg import CFG
+from .utils.browser_hub import HubError
+from .utils.cfg import CFG
 
 
 class Limits(BaseModel):

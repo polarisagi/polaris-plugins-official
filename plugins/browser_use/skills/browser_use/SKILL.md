@@ -1,19 +1,18 @@
 ---
 name: browser_use
-description: "Standard operating procedure for the browser MCP tool utilizing DOM-based automation and structured harvesting."
-version: "2.0.0"
+description: "Standard operating procedure for the generic browser MCP tool: open, read, snapshot and act on arbitrary web pages."
+version: "2.1.0"
 tags:
   - browser-use
   - automation
   - web
-  - harvest
 exec_mode: ambient
 risk_level: medium
 sandbox: L2
 capability: read-write
 ---
 
-# Browser Use 操作与决策规范 (v2.0.0)
+# Browser Use 操作与决策规范 (v2.1.0)
 
 本技能定义 Agent 调度浏览器能力时的核心决策流、token 控制法则、隐私隔离约定与风控错误恢复策略。
 
@@ -26,8 +25,8 @@ capability: read-write
 ```
 1. 内核 HTTP 数据面 (feed_fetch / web_fetch / web_search)
    ↓ 能拿到结构化数据或 Markdown 时，绝对不用浏览器 (0 渲染开销、VPS 通用)
-2. 结构化站点配方 (harvest)
-   ↓ 目标为已知社交平台或资讯站 (知乎、X、微博等)，优先调用 harvest (0 token 接口拦截 + 全局限速)
+2. 已知社交平台 (知乎、X、微博、小红书等)
+   ↓ 一律改用 polaris-social 插件的 social_search / social_hot / social_feed / social_read（0 token 接口拦截 + 读写共享限速），不要用本插件手动浏览这些站点
 3. 纯阅读获取 (browser_open + browser_read)
    ↓ 未知网页或无配方页面，打开后优先使用 article 或 markdown 模式提取内容
 4. 深度交互操作 (browser_snapshot + browser_act)
@@ -63,12 +62,8 @@ capability: read-write
 - **`stale_ref`**：
   - *原因*：页面结构已变化或发生跳转，原快照编号（如 e12）已失效。
   - *处理*：重新调用 `browser_snapshot` 获取最新元素编码，切勿胡乱猜测 ref 编号。
-- **`rate_limited`**：
-  - *原因*：触发跨进程全局频次配额上限。
-  - *处理*：停止继续发起请求，向用户汇报当前已达配额限额。
-- **`cooling_down` / `blocked`**：
-  - *原因*：目标站点触发安全风控（验证码、访问受限等），已进入熔断冷却期。
-  - *处理*：**立即停止该站点的所有请求，绝对禁止自动重试绕过**。
+- **遇到验证码 / 访问受限 / 403 / 429**：
+  - *处理*：**立即停止对该站点的所有请求，绝对禁止自动重试绕过**，向用户汇报。
 - **`invalid_args`**：
   - *原因*：URL 格式非法、CSS 选择器错误或 ref 格式不符合 `e<数字>` 规范。
 
@@ -81,30 +76,9 @@ capability: read-write
 
 ---
 
-## 5. 结构化采集配方 (harvest) 与合规准则
+## 5. 与 polaris-social 的分工
 
-`harvest` 工具基于内置或用户自定义站点配方执行确定性数据抽取，优先拦截网络 XHR JSON 数据，无须通过大模型解析即可获得标准化数据列表（0 Token 消耗）。
+本插件只提供**平台无关**的浏览器能力（打开、正文读取、快照、交互）与浏览器连接，不含任何站点知识、配方或限速。
 
-### 5.1 支持站点与可用动作
-
-当前内置支持 4 大平台（状态均处于 `beta` 测试阶段）：
-
-| 站点 (`site`) | 可用动作 (`action`) | 参数 (`params`) | 默认限速 | 活跃时段 |
-|---|---|---|---|---|
-| `zhihu` (知乎) | `hot` (全网热榜)<br>`search` (问答/文章搜索) | `hot`: 无<br>`search`: `q` (关键词，必填) | 间隔 ≥4s，≤60次/小时 | 08:00-23:30 |
-| `xiaohongshu` (小红书) | `search` (图文/笔记搜索) | `q` (关键词，必填)<br>`sort` (`general` 综合 / `time_descending` 最新) | 间隔 ≥8s，≤30次/小时 | 09:00-23:00 |
-| `x` (X / Twitter) | `search` (推文搜索)<br>`user_timeline` (用户时间线) | `search`: `q` (关键词), `mode` (`top`/`latest`)<br>`user_timeline`: `handle` (用户名，无需@) | 间隔 ≥5s，≤50次/小时 | 00:00-24:00 |
-| `weibo` (微博) | `hot` (实时热搜榜)<br>`search` (博文搜索) | `hot`: 无<br>`search`: `q` (关键词，必填) | 间隔 ≥5s，≤50次/小时 | 08:00-23:30 |
-
-### 5.2 状态探测与自测工具
-
-- **`harvest_recipes`**：查询所有已加载站点的动作定义、参数类型、默认值与当前风控熔断状态。
-- **`harvest_selftest(site)`**：对指定站点的全部动作执行一次最小无害调用，检测网络拦截与字段完整率（≥80% 视为正常）。
-
-### 5.3 数据安全与合规红线
-
-1. **公开与授权范围**：仅允许采集当前登录账号在前端界面可见的公开信息或订阅流，严禁越权请求未授权资源。
-2. **个人合理使用**：采集结果仅限用于用户个人知识总结与自动化流水线消费，严禁用于规模化数据爬取或商业倒卖。
-3. **频次克制**：严格遵守各站点配置的 `limits`（min_interval_s 与 max_per_day），杜绝突发并发。
-4. **遇风控即停**：当站点出现滑块验证码、风控提示或返回 403/429 时，系统将自动记录并进入熔断冷静期（6~12小时）。**严禁尝试绕过或破解任何站点的安全机制**。
-
+- 已知社交平台的读取（搜索 / 热榜 / 用户动态 / 帖文正文）与写入（发帖 / 互动）全部在 `polaris-social` 插件，读写共享同一账号的限速与风控熔断。
+- 对未知网页，才使用本插件的 `browser_open` + `browser_read`；遇到风控信号时遵守第 3 节「立即停止」铁律。

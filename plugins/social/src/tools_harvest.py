@@ -12,7 +12,7 @@ from typing import Any
 
 from patchright.async_api import Error as PwError
 
-from .browser_hub import HubError
+from .utils.browser_hub import HubError
 from .harvest.engine import run_harvest
 from .harvest.loader import load_all_recipes
 

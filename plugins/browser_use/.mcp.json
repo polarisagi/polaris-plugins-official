@@ -2,7 +2,12 @@
   "mcpServers": {
     "polaris-browser-use": {
       "command": "uv",
-      "args": ["run", "src/main.py"]
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "src.main"
+      ]
     }
   }
 }

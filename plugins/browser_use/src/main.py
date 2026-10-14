@@ -1,6 +1,7 @@
-"""Polaris Browser Use MCP Server (v2.0.0).
+"""Polaris Browser Use MCP Server (v2.1.0).
 
-基于真实浏览器多后端隔离、DOM 快照与结构化配方采集的现代化 Agent 浏览器扩展。
+基于真实浏览器多后端隔离、DOM 快照与低 token 正文阅读的通用 Agent 浏览器扩展（不含任何平台知识；
+已知社交平台的读写与采集见 polaris-social 插件）。
 所有工具统一经由 FastMCP 注册，严格设置 ToolAnnotations 参数提示。
 """
 
@@ -20,11 +21,6 @@ from .tools_browser import (
     tool_browser_snapshot,
     tool_browser_status,
     tool_browser_tabs,
-)
-from .tools_harvest import (
-    tool_harvest,
-    tool_harvest_recipes,
-    tool_harvest_selftest,
 )
 
 mcp = FastMCP("polaris-browser-use")
@@ -102,33 +98,8 @@ async def browser_tabs(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def browser_status() -> dict[str, Any]:
-    """查看当前浏览器后端类型(cdp/managed/extension)、连接状态与各站点频次限制剩余配额。"""
+    """查看当前浏览器后端类型(cdp/managed/extension)、连接状态与已登录站点缓存。"""
     return await tool_browser_status()
-
-
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def harvest(
-    site: str,
-    action: str,
-    params: dict[str, Any] | None = None,
-    max_items: int = 20,
-) -> dict[str, Any]:
-    """针对已知站点（如知乎、X、微博等）执行确定性结构化采集，优先通过网络拦截（0 token），内置全局频次限速。"""
-    return await tool_harvest(
-        site=site, action=action, params=params, max_items=max_items
-    )
-
-
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def harvest_recipes() -> dict[str, Any]:
-    """列出当前支持的站点配方、动作定义、参数与风控状态。"""
-    return await tool_harvest_recipes()
-
-
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def harvest_selftest(site: str) -> dict[str, Any]:
-    """对指定站点的所有采集动作进行一次最小自测并报告字段完整率。"""
-    return await tool_harvest_selftest(site=site)
 
 
 def main() -> None:
