@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 # =============================================================================
-# check.sh — Python 项目全量检测脚本
-# 用法：./check.sh [选项]
-#   -p <path>   指定项目路径（默认：当前目录 .）
-#   -x          自动修复模式（ruff 自动修复 lint + 格式；safety 自动升级漏洞包）
-#   -s          跳过 safety 依赖漏洞扫描（网络慢时使用）
-#   -t          跳过 mypy 类型检查
-#   -r          跳过 radon 复杂度检测
-#   -f          发现问题时强制继续（默认遇严重错误会提示）
-#   -h          显示帮助
+# check.sh — polaris 官方插件仓库全量检测脚本
+#
+# 对 plugins/*/pyproject.toml 对应的每个插件分别执行：
+#   Ruff lint / Ruff format / Bandit / pip-audit / Mypy / Pytest / Radon
+# 最后输出「插件 × 步骤」汇总表，并做跨插件共享模块一致性检查。
+#
+# 所有工具一律通过 `uvx <tool>@<固定版本>` 运行（不依赖 PATH 上的同名工具，
+# 保证结果可复现）；Mypy / Pytest 通过 `uv run --project <插件>` 在插件自身
+# 依赖环境里运行。需要先安装 uv：https://docs.astral.sh/uv/
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail   # 故意不加 -e：单个工具失败只记为该步骤 fail，不中断整体
+
+# ── 固定的工具版本（升级时统一改这里）────────────────────────────────────────
+RUFF_VERSION="0.17.0"
+BANDIT_VERSION="1.9.4"
+RADON_VERSION="6.0.1"
+PIP_AUDIT_VERSION="2.10.1"
+MYPY_VERSION="2.4.0"
+PYTEST_VERSION="9.1.1"
+
+# ── 路径：无论从哪里调用都以脚本所在目录为基准 ───────────────────────────────
+ORIG_PWD="$PWD"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+cd "$SCRIPT_DIR" || exit 1
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -23,41 +36,51 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 # ── 默认参数 ──────────────────────────────────────────────────────────────────
-TARGET="."
+TARGET=""
 AUTOFIX=false
-SKIP_SAFETY=false
+SKIP_AUDIT=false
 SKIP_MYPY=false
 SKIP_RADON=false
+SKIP_TESTS=false
 FORCE=false
 
-# 记录自动修复的内容
-FIXED=()
-
-# ── 统计 ──────────────────────────────────────────────────────────────────────
+FIXED=()        # 自动修复记录
+WARNINGS=()     # 失败项（插件/步骤）
+RESULTS=()      # "插件|步骤|状态"
 PASS=0
 FAIL=0
 SKIP=0
-WARNINGS=()
 
-# ── 解析参数 ──────────────────────────────────────────────────────────────────
+STEPS=("ruff" "format" "bandit" "audit" "mypy" "test" "radon")
+STEP_LABELS=("Ruff" "Format" "Bandit" "Audit" "Mypy" "Test" "Radon")
+
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/polaris-check.XXXXXX")
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+# ── 参数 ──────────────────────────────────────────────────────────────────────
 usage() {
-  echo "用法: $0 [-p <path>] [-x] [-s] [-t] [-r] [-f] [-h]"
-  echo "  -p  指定检测目录（默认：.）"
-  echo "  -x  自动修复模式（ruff lint/格式修复 + safety 漏洞包升级）"
-  echo "  -s  跳过 safety 依赖扫描"
+  echo "用法: $0 [-p <插件目录>] [-x] [-s] [-t] [-T] [-r] [-f] [-h]"
+  echo "  -p  只检测指定插件目录（如 plugins/browser_use；默认：自动发现 plugins/*）"
+  echo "  -x  自动修复模式（仅 ruff lint/格式；依赖漏洞需自行改 pyproject.toml/uv.lock）"
+  echo "  -s  跳过 pip-audit 依赖漏洞扫描（网络受限/较慢时使用）"
   echo "  -t  跳过 mypy 类型检查"
+  echo "  -T  跳过 pytest 测试"
   echo "  -r  跳过 radon 复杂度检测"
-  echo "  -f  强制继续，不中断"
+  echo "  -f  存在失败时也以退出码 0 结束"
   echo "  -h  显示帮助"
+  echo ""
+  echo "工具均通过 uvx 固定版本运行: ruff ${RUFF_VERSION}, bandit ${BANDIT_VERSION},"
+  echo "  radon ${RADON_VERSION}, pip-audit ${PIP_AUDIT_VERSION}, mypy ${MYPY_VERSION}, pytest ${PYTEST_VERSION}"
   exit 0
 }
 
-while getopts "p:xstrfh" opt; do
+while getopts "p:xstTrfh" opt; do
   case $opt in
     p) TARGET="$OPTARG" ;;
     x) AUTOFIX=true ;;
-    s) SKIP_SAFETY=true ;;
+    s) SKIP_AUDIT=true ;;
     t) SKIP_MYPY=true ;;
+    T) SKIP_TESTS=true ;;
     r) SKIP_RADON=true ;;
     f) FORCE=true ;;
     h) usage ;;
@@ -78,260 +101,327 @@ print_step() {
   echo -e "${CYAN}▶ $1${RESET}"
 }
 
-pass() {
-  echo -e "${GREEN}✔ $1${RESET}"
-  PASS=$((PASS + 1))
+# record <插件> <步骤> <PASS|FAIL|SKIP> [说明]
+record() {
+  local plugin="$1" step="$2" status="$3" note="${4:-}"
+  RESULTS+=("${plugin}|${step}|${status}")
+  case "$status" in
+    PASS) echo -e "  ${GREEN}✔ ${plugin}${RESET} ${note}"; PASS=$((PASS + 1)) ;;
+    FAIL) echo -e "  ${RED}✘ ${plugin}${RESET} ${note}"; FAIL=$((FAIL + 1))
+          WARNINGS+=("${plugin} / ${step}${note:+ — ${note}}") ;;
+    SKIP) echo -e "  ${YELLOW}⊘ ${plugin}${RESET} ${note}"; SKIP=$((SKIP + 1)) ;;
+  esac
 }
 
-fail() {
-  echo -e "${RED}✘ $1${RESET}"
-  FAIL=$((FAIL + 1))
-  WARNINGS+=("$1")
+# lookup <插件> <步骤> → 状态
+lookup() {
+  local r
+  for r in ${RESULTS[@]+"${RESULTS[@]}"}; do
+    if [ "${r%|*}" = "$1|$2" ]; then
+      echo "${r##*|}"
+      return
+    fi
+  done
+  echo "-"
 }
 
-skipped() {
-  echo -e "${YELLOW}⊘ 跳过: $1${RESET}"
-  SKIP=$((SKIP + 1))
+# 缩进输出文件内容
+show_output() {
+  sed 's/^/    /' "$1"
 }
 
-require_tool() {
-  local tool="$1"
-  local install_hint="$2"
-  if ! command -v "$tool" &>/dev/null; then
-    echo -e "${YELLOW}⚠ 未找到 ${tool}，正在安装...${RESET}"
-    pip install "$install_hint" -q --break-system-packages 2>/dev/null \
-      || pip install "$install_hint" -q 2>/dev/null \
-      || { echo -e "${RED}安装 ${tool} 失败，请手动运行: pip install ${install_hint}${RESET}"; return 1; }
+plugin_name() {
+  basename "$1"
+}
+
+# 在插件依赖环境中运行命令；绝不改写仓库里的 uv.lock：
+#   有 uv.lock → --frozen 直接按锁文件装（锁文件过期也不会被改写）
+#   无 uv.lock → 运行后删除 uv 临时生成的锁文件
+# 用法: uv_run <插件目录> <with 依赖> <命令...>
+uv_run() {
+  local dir="$1" with="$2" rc
+  shift 2
+  if [ -f "$dir/uv.lock" ]; then
+    uv run --frozen --project "$dir" --quiet --with "$with" "$@"
+    return $?
   fi
+  uv run --project "$dir" --quiet --with "$with" "$@"
+  rc=$?
+  rm -f "$dir/uv.lock"
+  return $rc
 }
+
+# ── 前置：uv ─────────────────────────────────────────────────────────────────
+if ! command -v uv &>/dev/null || ! command -v uvx &>/dev/null; then
+  echo -e "${RED}✘ 未找到 uv / uvx。本脚本依赖 uv 运行所有检测工具。${RESET}"
+  echo "  安装: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  echo "  或:   brew install uv"
+  exit 1
+fi
+
+# ── 发现插件 ─────────────────────────────────────────────────────────────────
+PLUGIN_DIRS=()
+if [ -n "$TARGET" ]; then
+  if [ -d "$ORIG_PWD/$TARGET" ]; then
+    TARGET_ABS=$(cd "$ORIG_PWD/$TARGET" && pwd)
+  elif [ -d "$SCRIPT_DIR/$TARGET" ]; then
+    TARGET_ABS=$(cd "$SCRIPT_DIR/$TARGET" && pwd)
+  elif [ -d "$TARGET" ]; then
+    TARGET_ABS=$(cd "$TARGET" && pwd)
+  else
+    echo -e "${RED}✘ -p 指定的目录不存在: ${TARGET}${RESET}"
+    exit 1
+  fi
+  if [ -f "$TARGET_ABS/pyproject.toml" ]; then
+    PLUGIN_DIRS+=("$TARGET_ABS")
+  else
+    while IFS= read -r f; do
+      [ -n "$f" ] && PLUGIN_DIRS+=("$(dirname "$f")")
+    done < <(find "$TARGET_ABS" -maxdepth 3 -name pyproject.toml ! -path "*/.venv/*" | sort)
+  fi
+else
+  while IFS= read -r f; do
+    [ -n "$f" ] && PLUGIN_DIRS+=("$(dirname "$f")")
+  done < <(find "$SCRIPT_DIR/plugins" -maxdepth 2 -name pyproject.toml ! -path "*/.venv/*" | sort)
+fi
+
+if [ "${#PLUGIN_DIRS[@]}" -eq 0 ]; then
+  echo -e "${RED}✘ 未发现任何含 pyproject.toml 的插件${RESET}"
+  exit 1
+fi
 
 # ── 开始 ──────────────────────────────────────────────────────────────────────
-print_header "Python 项目检测 — $(date '+%Y-%m-%d %H:%M:%S')"
-echo -e "  检测目录: ${BOLD}${TARGET}${RESET}"
+print_header "polaris 插件检测 — $(date '+%Y-%m-%d %H:%M:%S')"
+echo -e "  仓库目录: ${BOLD}${SCRIPT_DIR}${RESET}"
+echo -e "  插件 (${#PLUGIN_DIRS[@]}): ${BOLD}$(for d in "${PLUGIN_DIRS[@]}"; do plugin_name "$d"; done | tr '\n' ' ')${RESET}"
+echo -e "  工具: ruff ${RUFF_VERSION} / bandit ${BANDIT_VERSION} / pip-audit ${PIP_AUDIT_VERSION} / mypy ${MYPY_VERSION} / pytest ${PYTEST_VERSION} / radon ${RADON_VERSION}"
 if $AUTOFIX; then
   echo -e "  模式: ${YELLOW}${BOLD}自动修复已开启 (-x)${RESET}"
 fi
-echo ""
 
-# ── 1. Ruff — Lint + 格式检查 ─────────────────────────────────────────────────
-print_step "1/5  Ruff — 代码规范 & 潜在错误"
-require_tool ruff ruff
-
-if $AUTOFIX; then
-  # 先自动修复可修复的 lint 问题
-  RUFF_FIX_OUT=$(ruff check "$TARGET" --fix --output-format=concise 2>&1 || true)
-  FIXED_COUNT=$(echo "$RUFF_FIX_OUT" | grep -oE 'Fixed [0-9]+' | grep -oE '[0-9]+' || echo "0")
-  if [ "${FIXED_COUNT:-0}" -gt 0 ]; then
-    echo -e "${GREEN}  ✔ 自动修复了 ${FIXED_COUNT} 个 lint 问题${RESET}"
-    FIXED+=("Ruff 自动修复了 ${FIXED_COUNT} 个 lint 问题")
+# ── 1. Ruff lint ─────────────────────────────────────────────────────────────
+print_step "1/8  Ruff — 代码规范 & 潜在错误"
+for d in "${PLUGIN_DIRS[@]}"; do
+  name=$(plugin_name "$d")
+  out="$TMP_DIR/ruff.$name.out"
+  if $AUTOFIX; then
+    uvx --quiet "ruff@${RUFF_VERSION}" check "$d" --fix --output-format=concise >"$out" 2>&1
+    n=$(grep -oE 'Fixed [0-9]+' "$out" | grep -oE '[0-9]+' | head -1)
+    if [ "${n:-0}" -gt 0 ]; then
+      FIXED+=("${name}: Ruff 自动修复了 ${n} 个 lint 问题")
+    fi
   fi
-  # 再次检查是否还有残余（unsafe 类问题无法自动修复）
-  if ruff check "$TARGET" --output-format=concise 2>&1; then
-    pass "Ruff lint 全部通过"
+  if uvx --quiet "ruff@${RUFF_VERSION}" check "$d" --output-format=concise >"$out" 2>&1; then
+    record "$name" ruff PASS
   else
-    echo -e "${YELLOW}  提示：剩余问题需手动处理（如 unsafe 修复、逻辑错误）${RESET}"
-    fail "Ruff 仍有无法自动修复的问题"
+    show_output "$out"
+    record "$name" ruff FAIL "Ruff 发现问题"
   fi
-else
-  if ruff check "$TARGET" --output-format=concise 2>&1; then
-    pass "Ruff 未发现问题"
+done
+$AUTOFIX || echo -e "${YELLOW}  提示：运行 './check.sh -x' 可自动修复部分问题${RESET}"
+
+# ── 2. Ruff format ───────────────────────────────────────────────────────────
+print_step "2/8  Ruff format — 格式一致性"
+for d in "${PLUGIN_DIRS[@]}"; do
+  name=$(plugin_name "$d")
+  out="$TMP_DIR/fmt.$name.out"
+  if $AUTOFIX; then
+    uvx --quiet "ruff@${RUFF_VERSION}" format "$d" >"$out" 2>&1
+    FIXED+=("${name}: Ruff format 已统一代码格式")
+  fi
+  if uvx --quiet "ruff@${RUFF_VERSION}" format "$d" --check >"$out" 2>&1; then
+    record "$name" format PASS
   else
-    echo -e "${YELLOW}  提示：运行 './check.sh -x' 可自动修复部分问题${RESET}"
-    fail "Ruff 发现代码规范问题"
+    show_output "$out"
+    record "$name" format FAIL "存在格式不一致"
   fi
-fi
+done
 
-# 格式检查
-print_step "     Ruff format — 格式一致性"
-if $AUTOFIX; then
-  ruff format "$TARGET" --quiet 2>&1 || true
-  FIXED+=("Ruff format 已统一代码格式")
-  pass "代码格式已自动统一"
-else
-  if ruff format "$TARGET" --check --quiet 2>&1; then
-    pass "代码格式一致"
+# ── 3. Bandit ────────────────────────────────────────────────────────────────
+print_step "3/8  Bandit — 安全漏洞扫描（-ll：仅 Medium/High）"
+for d in "${PLUGIN_DIRS[@]}"; do
+  name=$(plugin_name "$d")
+  out="$TMP_DIR/bandit.$name.out"
+  if uvx --quiet "bandit@${BANDIT_VERSION}" -r "$d" -ll -q \
+      --exclude "${d}/.venv,${d}/tests" >"$out" 2>&1; then
+    record "$name" bandit PASS
   else
-    echo -e "${YELLOW}  提示：运行 './check.sh -x' 可自动修复格式${RESET}"
-    fail "存在格式不一致（不影响运行，建议修复）"
+    show_output "$out"
+    record "$name" bandit FAIL "Bandit 发现 Medium/High 安全问题，需人工审查"
   fi
-fi
+done
 
-# ── 2. Bandit — 安全漏洞 ──────────────────────────────────────────────────────
-print_step "2/5  Bandit — 安全漏洞扫描"
-require_tool bandit bandit
-# -ll: 只报告 medium/high; -q: 精简输出; 忽略测试目录
-# 动态收集所有 .venv 路径，避免扫描第三方库产生大量误报
-VENV_PATHS=$(find "$TARGET" -maxdepth 4 -type d \( -name ".venv" -o -name "venv" \) 2>/dev/null | tr '\n' ',' | sed 's/,$//')
-BANDIT_EXCLUDE="${VENV_PATHS:+$VENV_PATHS,}tests,test,env,.env"
-if bandit -r "$TARGET" -ll -q \
-    --exclude "$BANDIT_EXCLUDE" 2>&1; then
-  pass "Bandit 未发现安全漏洞"
+# ── 4. pip-audit ─────────────────────────────────────────────────────────────
+print_step "4/8  pip-audit — 依赖库 CVE 漏洞（基于各插件 uv.lock）"
+if $SKIP_AUDIT; then
+  for d in "${PLUGIN_DIRS[@]}"; do record "$(plugin_name "$d")" audit SKIP "已通过 -s 跳过"; done
 else
-  # 安全漏洞不能自动修复，需人工审查
-  echo -e "${YELLOW}  ⚠ 安全漏洞需要人工审查，无法自动修复${RESET}"
-  echo -e "${YELLOW}  提示：查看上方报告，重点关注 CWE 编号和漏洞位置${RESET}"
-  fail "Bandit 发现安全漏洞（Medium/High 级别）—— 需人工修复"
-fi
-
-# ── 3. Safety — 依赖 CVE 扫描 ────────────────────────────────────────────────
-print_step "3/5  Safety — 依赖库 CVE 漏洞"
-if $SKIP_SAFETY; then
-  skipped "Safety（已通过 -s 跳过）"
-else
-  require_tool safety safety
-  # 优先扫描 requirements 文件，否则扫描当前环境
-  REQS=$(find "$TARGET" -maxdepth 2 \
-    \( -name "requirements*.txt" -o -name "requirements/*.txt" \) 2>/dev/null | head -1)
-
-  run_safety_check() {
-    local reqs_arg="$1"   # "" 表示扫当前环境，否则是 "-r <file>"
-    local label="$2"
-    local safety_out
-    # shellcheck disable=SC2086
-    safety_out=$(safety check $reqs_arg --short-report 2>&1 || true)
-
-    if echo "$safety_out" | grep -qiE "No known security vulnerabilities"; then
-      echo "$safety_out"
-      pass "Safety 未发现依赖漏洞 ${label}"
+  for d in "${PLUGIN_DIRS[@]}"; do
+    name=$(plugin_name "$d")
+    out="$TMP_DIR/audit.$name.out"
+    req="$TMP_DIR/audit.$name.requirements.txt"
+    if [ ! -f "$d/uv.lock" ]; then
+      record "$name" audit SKIP "无 uv.lock，无法审计（请先 uv lock）"
+      continue
+    fi
+    if ! uv export --project "$d" --frozen --no-hashes --no-dev --no-emit-project \
+        -o "$req" >"$out" 2>&1; then
+      show_output "$out"
+      record "$name" audit FAIL "uv export 失败"
+      continue
+    fi
+    if uvx --quiet "pip-audit@${PIP_AUDIT_VERSION}" -r "$req" --no-deps --disable-pip \
+        --strict >"$out" 2>&1; then
+      record "$name" audit PASS
     else
-      echo "$safety_out"
-      if $AUTOFIX; then
-        # 提取有漏洞的包名（格式：-> package_name ）
-        VULN_PKGS=$(echo "$safety_out" \
-          | grep -oE -- '-> [a-zA-Z0-9_-]+' \
-          | awk '{print $2}' \
-          | sort -u \
-          | tr '\n' ' ' || true)
-        if [ -n "$VULN_PKGS" ]; then
-          echo -e "${YELLOW}  ▶ 正在升级存在漏洞的包: ${VULN_PKGS}${RESET}"
-          # shellcheck disable=SC2086
-          if pip install --upgrade $VULN_PKGS -q 2>&1; then
-            echo -e "${GREEN}  ✔ 已升级: ${VULN_PKGS}${RESET}"
-            FIXED+=("Safety 自动升级了漏洞包: ${VULN_PKGS}")
-            # 升级后如有 requirements.txt 则同步更新版本号
-            if [ -n "$REQS" ]; then
-              echo -e "${YELLOW}  提示：如需同步 ${REQS}，请运行: pip freeze > ${REQS}${RESET}"
-            fi
-            pass "Safety 漏洞包已自动升级"
-          else
-            echo -e "${RED}  升级失败，请手动运行: pip install --upgrade ${VULN_PKGS}${RESET}"
-            fail "Safety 发现 CVE 漏洞，自动升级失败 ${label}"
-          fi
-        else
-          echo -e "${YELLOW}  ⚠ 无法解析包名，请手动处理上方漏洞${RESET}"
-          fail "Safety 发现 CVE 漏洞，需手动处理 ${label}"
-        fi
+      show_output "$out"
+      if grep -qiE 'connection|network|timed out|resolve|temporary failure|ssl' "$out"; then
+        record "$name" audit FAIL "pip-audit 网络失败（网络受限时可加 -s 跳过）"
       else
-        echo -e "${YELLOW}  提示：运行 './check.sh -x' 可自动升级漏洞包${RESET}"
-        fail "Safety 发现依赖库 CVE 漏洞，请升级相关包 ${label}"
+        record "$name" audit FAIL "发现依赖漏洞：请升级 pyproject.toml / uv.lock（脚本不自动升级）"
       fi
-    fi
-  }
-
-  if [ -n "$REQS" ]; then
-    run_safety_check "-r ${REQS}" "(${REQS})"
-  else
-    run_safety_check "" "（当前环境）"
-  fi
-fi
-
-# ── 4. Mypy — 类型检查 ────────────────────────────────────────────────────────
-print_step "4/5  Mypy — 类型检查"
-if $SKIP_MYPY; then
-  skipped "Mypy（已通过 -t 跳过）"
-else
-  require_tool mypy mypy
-  MYPY_FAIL=0
-  # 每个插件是独立的包，必须在各自目录内单独扫描，
-  # 否则多个 src/main.py 会产生 "Duplicate module named 'main'" 错误。
-  PLUGIN_DIRS=$(find "$TARGET" -maxdepth 2 -name "pyproject.toml" \
-    ! -path "*/.venv/*" 2>/dev/null \
-    | xargs -I{} dirname {} \
-    | sort)
-
-  if [ -z "$PLUGIN_DIRS" ]; then
-    # 根目录本身就是一个包，直接扫描
-    if mypy "$TARGET" \
-        --ignore-missing-imports \
-        --explicit-package-bases \
-        --no-error-summary \
-        --pretty 2>&1; then
-      pass "Mypy 类型检查通过"
-    else
-      MYPY_FAIL=1
-    fi
-  else
-    while IFS= read -r plugin_dir; do
-      src_dir="${plugin_dir}/src"
-      scan_dir="${src_dir:-$plugin_dir}"
-      [ -d "$scan_dir" ] || scan_dir="$plugin_dir"
-      echo -e "${CYAN}   扫描: ${scan_dir}${RESET}"
-      if ! mypy "$scan_dir" \
-          --ignore-missing-imports \
-          --explicit-package-bases \
-          --disable-error-code annotation-unchecked \
-          --no-error-summary \
-          --pretty 2>&1; then
-        MYPY_FAIL=1
-      fi
-    done <<< "$PLUGIN_DIRS"
-  fi
-
-  if [ "$MYPY_FAIL" -eq 0 ]; then
-    pass "Mypy 类型检查通过"
-  else
-    fail "Mypy 发现类型错误"
-  fi
-
-fi
-
-# ── 5. Radon — 复杂度 ─────────────────────────────────────────────────────────
-print_step "5/5  Radon — 圈复杂度"
-if $SKIP_RADON; then
-  skipped "Radon（已通过 -r 跳过）"
-else
-  require_tool radon radon
-  # 只显示 D 级（复杂度 ≥ 10）及以上的函数，这些是高风险区域
-  RADON_OUT=$(radon cc "$TARGET" -s -n D 2>/dev/null || true)
-  if [ -z "$RADON_OUT" ]; then
-    pass "所有函数复杂度在可接受范围内（< 10）"
-  else
-    echo -e "${YELLOW}${RADON_OUT}${RESET}"
-    fail "发现高复杂度函数（复杂度 ≥ 10），建议重构"
-  fi
-fi
-
-# ── 6. 跨插件共享模块一致性检查 ───────────────────────────────────────────────
-print_step "6/6  跨插件一致性 — browser_hub.py SHA-256 对比"
-ALL_HUBS=($(find plugins -name "browser_hub.py" ! -path "*/.venv/*" 2>/dev/null || true))
-if [ "${#ALL_HUBS[@]}" -gt 1 ]; then
-  FIRST_HASH=""
-  CONSISTENT=true
-  for f in "${ALL_HUBS[@]}"; do
-    H=$(shasum -a 256 "$f" | awk '{print $1}')
-    if [ -z "$FIRST_HASH" ]; then
-      FIRST_HASH="$H"
-    elif [ "$FIRST_HASH" != "$H" ]; then
-      CONSISTENT=false
-      echo -e "${RED}  ✘ 差异文件: $f (hash: $H != $FIRST_HASH)${RESET}"
     fi
   done
-  if $CONSISTENT; then
-    pass "所有 browser_hub.py 副本 sha256 一致 (${#ALL_HUBS[@]} 个副本)"
-  else
-    fail "存在不一致的 browser_hub.py 副本，请同步"
-  fi
-else
-  skipped "未检测到多个 browser_hub.py 副本（仅 ${#ALL_HUBS[@]} 个）"
 fi
 
+# ── 5. Mypy ──────────────────────────────────────────────────────────────────
+print_step "5/8  Mypy — 类型检查（在各插件自身依赖环境内运行）"
+if $SKIP_MYPY; then
+  for d in "${PLUGIN_DIRS[@]}"; do record "$(plugin_name "$d")" mypy SKIP "已通过 -t 跳过"; done
+else
+  for d in "${PLUGIN_DIRS[@]}"; do
+    name=$(plugin_name "$d")
+    out="$TMP_DIR/mypy.$name.out"
+    if [ ! -d "$d/src" ]; then
+      record "$name" mypy SKIP "无 src/ 目录"
+      continue
+    fi
+    if uv_run "$d" "mypy==${MYPY_VERSION}" mypy "$d/src" \
+        --ignore-missing-imports --explicit-package-bases \
+        --disable-error-code annotation-unchecked \
+        --no-error-summary --pretty >"$out" 2>&1; then
+      record "$name" mypy PASS
+    else
+      show_output "$out"
+      record "$name" mypy FAIL "Mypy 发现类型错误"
+    fi
+  done
+fi
 
-# ── 汇总报告 ──────────────────────────────────────────────────────────────────
-print_header "检测结果汇总"
+# ── 6. Pytest ────────────────────────────────────────────────────────────────
+print_step "6/8  Pytest — 单元测试"
+if $SKIP_TESTS; then
+  for d in "${PLUGIN_DIRS[@]}"; do record "$(plugin_name "$d")" test SKIP "已通过 -T 跳过"; done
+else
+  for d in "${PLUGIN_DIRS[@]}"; do
+    name=$(plugin_name "$d")
+    out="$TMP_DIR/test.$name.out"
+    if [ ! -d "$d/tests" ]; then
+      record "$name" test SKIP "无 tests/ 目录"
+      continue
+    fi
+    if uv_run "$d" "pytest==${PYTEST_VERSION}" pytest -q "$d/tests" >"$out" 2>&1; then
+      tail -n 1 "$out" | sed 's/^/    /'
+      record "$name" test PASS
+    else
+      show_output "$out"
+      record "$name" test FAIL "测试未通过"
+    fi
+  done
+fi
+
+# ── 7. Radon ─────────────────────────────────────────────────────────────────
+print_step "7/8  Radon — 圈复杂度（仅报告 D 级及以上，即复杂度 ≥ 21）"
+if $SKIP_RADON; then
+  for d in "${PLUGIN_DIRS[@]}"; do record "$(plugin_name "$d")" radon SKIP "已通过 -r 跳过"; done
+else
+  for d in "${PLUGIN_DIRS[@]}"; do
+    name=$(plugin_name "$d")
+    out="$TMP_DIR/radon.$name.out"
+    if ! uvx --quiet "radon@${RADON_VERSION}" cc "$d" -s -n D -e "*/.venv/*" >"$out" 2>&1; then
+      show_output "$out"
+      record "$name" radon FAIL "radon 执行失败"
+    elif [ -s "$out" ]; then
+      show_output "$out"
+      record "$name" radon FAIL "存在 D 级及以上（复杂度 ≥ 21）的函数，建议重构"
+    else
+      record "$name" radon PASS
+    fi
+  done
+fi
+
+# ── 8. 跨插件共享模块一致性 ──────────────────────────────────────────────────
+print_step "8/8  跨插件一致性 — 共享模块副本 SHA-256 对比"
+CONSISTENCY_ROW="(跨插件)"
+if [ -n "$TARGET" ]; then
+  echo -e "  ${YELLOW}⊘ 指定了 -p，跳过跨插件一致性检查${RESET}"
+  SKIP=$((SKIP + 1))
+  CONSISTENCY_STATUS="SKIP"
+else
+  CONSISTENCY_STATUS="PASS"
+  for fname in browser_hub.py bridge_relay.py bridge_const.py cfg.py; do
+    copies=()
+    while IFS= read -r f; do
+      [ -n "$f" ] && copies+=("$f")
+    done < <(find "$SCRIPT_DIR/plugins" -name "$fname" ! -path "*/.venv/*" ! -path "*/node_modules/*" | sort)
+    if [ "${#copies[@]}" -lt 2 ]; then
+      echo -e "  ${YELLOW}⊘ ${fname}: 仅 ${#copies[@]} 份，跳过${RESET}"
+      continue
+    fi
+    first_hash=""
+    first_file=""
+    ok=true
+    for f in "${copies[@]}"; do
+      h=$(shasum -a 256 "$f" | awk '{print $1}')
+      if [ -z "$first_hash" ]; then
+        first_hash="$h"; first_file="$f"
+      elif [ "$h" != "$first_hash" ]; then
+        ok=false
+        echo -e "  ${RED}✘ ${fname}: ${f#"$SCRIPT_DIR"/} 与 ${first_file#"$SCRIPT_DIR"/} 不一致${RESET}"
+      fi
+    done
+    if $ok; then
+      echo -e "  ${GREEN}✔ ${fname}: ${#copies[@]} 份副本一致${RESET}"
+    else
+      CONSISTENCY_STATUS="FAIL"
+      WARNINGS+=("跨插件一致性 / ${fname} 副本不一致，请同步")
+    fi
+  done
+  case "$CONSISTENCY_STATUS" in
+    PASS) PASS=$((PASS + 1)) ;;
+    FAIL) FAIL=$((FAIL + 1)) ;;
+  esac
+fi
+
+# ── 汇总 ─────────────────────────────────────────────────────────────────────
+print_header "检测结果汇总（插件 × 步骤）"
+
+cell() {
+  case "$1" in
+    PASS) printf "${GREEN}%-8s${RESET}" "pass" ;;
+    FAIL) printf "${RED}%-8s${RESET}" "FAIL" ;;
+    SKIP) printf "${YELLOW}%-8s${RESET}" "skip" ;;
+    *)    printf "%-8s" "-" ;;
+  esac
+}
+
+printf "  %-18s" "插件"
+for l in "${STEP_LABELS[@]}"; do printf "%-8s" "$l"; done
+echo ""
+for d in "${PLUGIN_DIRS[@]}"; do
+  name=$(plugin_name "$d")
+  printf "  %-18s" "$name"
+  for s in "${STEPS[@]}"; do cell "$(lookup "$name" "$s")"; done
+  echo ""
+done
+printf "  %-18s" "$CONSISTENCY_ROW"
+cell "$CONSISTENCY_STATUS"
+echo -e "  (browser_hub / bridge_relay / bridge_const / cfg)"
+
+echo ""
 echo -e "  ${GREEN}✔ 通过: ${PASS}${RESET}   ${RED}✘ 失败: ${FAIL}${RESET}   ${YELLOW}⊘ 跳过: ${SKIP}${RESET}"
 echo ""
 
-# 显示自动修复内容
 if [ ${#FIXED[@]} -gt 0 ]; then
   echo -e "${GREEN}${BOLD}自动修复内容：${RESET}"
   for f in "${FIXED[@]}"; do
@@ -340,7 +430,6 @@ if [ ${#FIXED[@]} -gt 0 ]; then
   echo ""
 fi
 
-# 显示仍需人工处理的问题
 if [ ${#WARNINGS[@]} -gt 0 ]; then
   echo -e "${RED}${BOLD}仍需人工处理的问题：${RESET}"
   for w in "${WARNINGS[@]}"; do
@@ -350,13 +439,13 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
 fi
 
 if [ "$FAIL" -eq 0 ]; then
-  echo -e "${GREEN}${BOLD}🎉 全部检测通过！可以安全推送到 GitHub。${RESET}"
+  echo -e "${GREEN}${BOLD}全部检测通过，可以安全推送。${RESET}"
   echo ""
   exit 0
 else
-  echo -e "${RED}${BOLD}⚠  存在 ${FAIL} 个问题，建议修复后再推送。${RESET}"
+  echo -e "${RED}${BOLD}存在 ${FAIL} 个失败项，建议修复后再推送。${RESET}"
   if $AUTOFIX; then
-    echo -e "${YELLOW}  注意：以上问题无法自动修复（安全漏洞/类型错误/复杂度），需人工处理。${RESET}"
+    echo -e "${YELLOW}  注意：剩余问题（安全/类型/复杂度/依赖漏洞/测试）无法自动修复，需人工处理。${RESET}"
   else
     echo -e "${YELLOW}  提示：运行 './check.sh -x' 可自动修复 lint 和格式问题。${RESET}"
   fi
