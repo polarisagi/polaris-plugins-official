@@ -19,8 +19,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .gate import rate_limited_write
+from .gate import rate_limited_read, rate_limited_write
 from .tools_social import (
+    download_image,
     tool_social_feed,
     tool_social_hot,
     tool_social_platforms,
@@ -425,7 +426,8 @@ async def edit_post(platform: str, post_identifier: str, new_content: str):
         return f"❌ Failed to edit post on {platform}: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_my_posts(platform: str, limit: int = 10):
     """Fetch a list of your own recent posts on a platform."""
     adapter = await _get_adapter(platform)
@@ -476,7 +478,8 @@ async def save_draft(
 # ─── ④ Comment Management ─────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_comments(platform: str, post_identifier: str) -> list[dict]:
     """Get comments for a specific post. Returns [{id, author, content}]."""
     adapter = await _get_adapter(platform)
@@ -588,9 +591,10 @@ async def quote_post(platform: str, post_identifier: str, comment: str):
 # ─── ⑥ Search & Discovery ────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def search_posts(platform: str, query: str) -> list[dict]:
-    """Search for posts on a platform. Returns [{url, snippet}]."""
+    """Search for posts on a platform. Returns [{url, snippet}]. Prefer social_search (structured, token-efficient) for zhihu/x/weibo/xiaohongshu."""
     adapter = await _get_adapter(platform)
     if isinstance(adapter, str):
         return [{"error": adapter}]
@@ -600,9 +604,10 @@ async def search_posts(platform: str, query: str) -> list[dict]:
         return [{"error": str(e)}]
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def read_post(platform: str, post_identifier: str) -> str:
-    """Read the full text content of a specific post."""
+    """Read the full text content of a specific post. Prefer social_read (Markdown body, paginated, token-efficient) when you have a URL."""
     adapter = await _get_adapter(platform)
     if isinstance(adapter, str):
         return adapter
@@ -612,9 +617,10 @@ async def read_post(platform: str, post_identifier: str) -> str:
         return f"❌ {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_trending_topics(platform: str, limit: int = 10) -> list[dict]:
-    """Get trending topics / hashtags on a platform."""
+    """Get trending topics / hashtags on a platform. Prefer social_hot for zhihu/weibo."""
     adapter = await _get_adapter(platform)
     if isinstance(adapter, str):
         return [{"error": adapter}]
@@ -629,7 +635,8 @@ async def get_trending_topics(platform: str, limit: int = 10) -> list[dict]:
 # ─── ⑦ User Operations ───────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_user_profile(platform: str, username: str) -> dict:
     """Get a user's profile info (name, bio, followers, etc.)."""
     adapter = await _get_adapter(platform)
@@ -726,7 +733,8 @@ async def send_dm(platform: str, username: str, text: str):
 # ─── ⑧ Analytics ─────────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_post_analytics(platform: str, post_identifier: str) -> dict:
     """Get engagement metrics for a post: likes, comments, shares, views."""
     adapter = await _get_adapter(platform)
@@ -740,7 +748,8 @@ async def get_post_analytics(platform: str, post_identifier: str) -> dict:
         return {"error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_account_analytics(platform: str) -> dict:
     """Get account-level stats: followers, impressions, reach, etc."""
     adapter = await _get_adapter(platform)
@@ -757,7 +766,8 @@ async def get_account_analytics(platform: str) -> dict:
 # ─── ⑨ Notifications ─────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_notifications(platform: str, limit: int = 20) -> list[dict]:
     """Get recent notifications (likes, follows, comments, mentions)."""
     adapter = await _get_adapter(platform)
@@ -771,7 +781,8 @@ async def get_notifications(platform: str, limit: int = 20) -> list[dict]:
         return [{"error": str(e)}]
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANN)
+@rate_limited_read
 async def get_mentions(platform: str, limit: int = 20) -> list[dict]:
     """Get recent posts/comments where you are @mentioned."""
     adapter = await _get_adapter(platform)
@@ -867,7 +878,7 @@ def split_text_into_thread(text: str, max_chars: int = 260) -> list[str]:
     return split_into_thread(text, max_chars)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
 async def search_free_image(query: str) -> str:
     """
     Search and download a royalty-free image from Pexels.
@@ -877,7 +888,6 @@ async def search_free_image(query: str) -> str:
         query: Search keyword (e.g. "mountain sunset", "coffee shop").
     """
     import urllib.parse
-    import urllib.request
     import tempfile
     import time
     from .utils.browser import ensure_page
@@ -886,7 +896,9 @@ async def search_free_image(query: str) -> str:
     encoded = urllib.parse.quote(query)
     try:
         await page.goto(
-            f"https://www.pexels.com/search/{encoded}/", wait_until="domcontentloaded"
+            f"https://www.pexels.com/search/{encoded}/",
+            wait_until="domcontentloaded",
+            timeout=30000,
         )
         await asyncio.sleep(3)
         img = page.locator("article img").first
@@ -898,7 +910,7 @@ async def search_free_image(query: str) -> str:
         tmp = tempfile.gettempdir()
         fname = f"social_post_{int(time.time())}.jpg"
         fpath = os.path.join(tmp, fname)
-        await asyncio.to_thread(urllib.request.urlretrieve, img_url, fpath)
+        await asyncio.to_thread(download_image, img_url, fpath)
         return fpath
     except Exception as e:
         return f"Failed to search/download image: {e}"

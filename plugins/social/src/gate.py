@@ -105,14 +105,8 @@ def error_result(err: HubError) -> dict[str, Any]:
     return {"ok": False, "error": err.to_dict()}
 
 
-def rate_limited_write(
-    fn: Callable[P, Awaitable[Any]],
-) -> Callable[P, Awaitable[Any]]:
-    """写工具装饰器：执行前先占用平台限速名额，被限速时返回错误码而不执行。
-
-    只对已知写平台生效；未知平台透传，由工具自身返回「不支持」提示。
-    被装饰函数必须有名为 platform 的参数。
-    """
+def _gate(fn: Callable[P, Awaitable[Any]]) -> Callable[P, Awaitable[Any]]:
+    """公共实现：执行前占用 platform 参数对应平台的限速名额。"""
     sig = inspect.signature(fn)
     if "platform" not in sig.parameters:
         raise TypeError(f"{fn.__name__} 缺少 platform 参数，无法接入限速闸门")
@@ -127,4 +121,31 @@ def rate_limited_write(
                 return error_result(e)
         return await fn(*args, **kwargs)
 
+    return wrapper
+
+
+def rate_limited_write(
+    fn: Callable[P, Awaitable[Any]],
+) -> Callable[P, Awaitable[Any]]:
+    """写工具装饰器：执行前先占用平台限速名额，被限速时返回错误码而不执行。
+
+    只对已知写平台生效；未知平台透传，由工具自身返回「不支持」提示。
+    被装饰函数必须有名为 platform 的参数。
+    """
+    return _gate(fn)
+
+
+def rate_limited_read(
+    fn: Callable[..., Awaitable[Any]],
+) -> Callable[..., Awaitable[Any]]:
+    """旧适配器读工具装饰器：与写工具共用同一把限速键。
+
+    限速失败时返回 {"ok": false, "error": {...}}，其形状与这些工具原先声明的返回类型
+    （list / str / dict）不同，因此把对外签名的返回注解放宽为 Any，避免 MCP 结构化输出校验拒绝；
+    正常执行时的返回内容与结构不变。
+    """
+    wrapper = _gate(fn)
+    sig = inspect.signature(fn)
+    # 设置 __signature__ 后 inspect.signature 不再回溯 __wrapped__
+    wrapper.__signature__ = sig.replace(return_annotation=Any)  # type: ignore[attr-defined]
     return wrapper

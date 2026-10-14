@@ -14,6 +14,7 @@ import html as html_lib
 import logging
 import random
 import re
+import urllib.request
 from typing import Any
 from urllib.parse import urlparse
 
@@ -265,3 +266,20 @@ async def tool_social_platforms() -> dict[str, Any]:
         }
     except (OSError, RuntimeError, ValueError) as e:
         return err("internal_error", str(e))
+
+
+IMAGE_TIMEOUT_S = 30
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+
+
+def download_image(url: str, dest: str) -> None:
+    """下载图片到本地：仅 https，带超时与大小上限（图库属非社交站点，不计入平台限速）。"""
+    if urlparse(url).scheme != "https":
+        raise ValueError("只允许 https 图片地址")
+    req = urllib.request.Request(url, headers={"User-Agent": "polaris-social"})
+    with urllib.request.urlopen(req, timeout=IMAGE_TIMEOUT_S) as resp:  # nosec B310 - 已限定 https
+        data = resp.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("图片超过 20MB 上限")
+    with open(dest, "wb") as f:
+        f.write(data)
