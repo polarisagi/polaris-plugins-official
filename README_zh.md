@@ -29,9 +29,10 @@
 
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
-**能力**：导航网页、点击元素、填写表单、截图  
-**底层驱动**：Python 及 `uv`  
-**特点**：纯 Python 自动化控制浏览器
+**版本**：`v2.0.0`  
+**能力**：多后端隔离（扩展桥接 / CDP / 托管 profile）、DOM 快照、低 Token 精炼阅读、结构化配方采集（知乎/小红书/X/微博）  
+**底层驱动**：Python、Patchright 及 `uv`  
+**特点**：0 Token 结构化数据拦截采集、免弹窗无人值守扩展中继、全局频次限速与风控熔断保护
 
 ### 3. [Knowledge Base (Python)](plugins/knowledge_base)
 

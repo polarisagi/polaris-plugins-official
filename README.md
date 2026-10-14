@@ -29,9 +29,10 @@
 
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
-**Capabilities**: Navigate URLs, click elements, fill forms, capture screenshots  
-**Powered by**: Python and `uv`  
-**Highlights**: Automate browsers directly from Python
+**Version**: `v2.0.0`  
+**Capabilities**: Multi-backend browser isolation (Polaris Bridge extension / CDP / managed profile), DOM snapshot, low-token reading, structured site recipes (zhihu, xiaohongshu, x, weibo)  
+**Powered by**: Python, Patchright and `uv`  
+**Highlights**: Zero-token structured harvesting, unattended extension bridge, global rate limiting
 
 ### 3. [Knowledge Base (Python)](plugins/knowledge_base)
 
