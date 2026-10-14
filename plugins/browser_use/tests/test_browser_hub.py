@@ -158,14 +158,26 @@ def test_module_has_no_target_id_scan() -> None:
     assert not hasattr(bh.BrowserHub, "_find_page_by_target_id")
 
 
-def test_fallback_ws_url_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    """端口文件不可读时，环境变量优先作为兜底调试端点。"""
+def test_env_cdp_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """环境变量显式指定的 CDP 端点优先。"""
     monkeypatch.setenv("POLARIS_BROWSER_CDP_URL", "ws://127.0.0.1:1/devtools/browser/x")
-    assert bh.fallback_ws_url() == "ws://127.0.0.1:1/devtools/browser/x"
+    assert bh.env_cdp_url() == "ws://127.0.0.1:1/devtools/browser/x"
+    assert bh.CdpToggleBackend().can_connect() is True
 
 
-def test_fallback_ws_url_none_when_port_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """无环境变量且 9222 未监听时返回 None。"""
+def test_no_guessed_fallback_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """不再猜测缺少浏览器 id 的 ws://127.0.0.1:9222/devtools/browser。"""
     monkeypatch.delenv("POLARIS_BROWSER_CDP_URL", raising=False)
-    monkeypatch.setattr(bh, "DEFAULT_TOGGLE_PORT", 1)
-    assert bh.fallback_ws_url() is None
+    monkeypatch.setattr(bh, "find_devtools_port_file", lambda: None)
+    assert bh.env_cdp_url() is None
+    assert not hasattr(bh, "fallback_ws_url")
+    assert bh.CdpToggleBackend().can_connect() is False
+
+
+async def test_connect_unreadable_port_file_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POLARIS_BROWSER_CDP_URL", raising=False)
+    monkeypatch.setattr(bh, "find_devtools_port_file", lambda: None)
+    with pytest.raises(HubError) as ei:
+        await bh.CdpToggleBackend().connect(object())  # type: ignore[arg-type]
+    assert "POLARIS_BROWSER_CDP_URL" in ei.value.message
+    assert "Polaris Browser Bridge" in ei.value.message

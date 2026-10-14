@@ -118,26 +118,15 @@ def read_devtools_ws_url(path: Path) -> str | None:
         return None
 
 
-DEFAULT_TOGGLE_PORT = 9222
+def env_cdp_url() -> str | None:
+    """显式指定的 CDP 端点（环境变量 POLARIS_BROWSER_CDP_URL），未设置返回 None。"""
+    return os.environ.get("POLARIS_BROWSER_CDP_URL", "").strip() or None
 
 
-def fallback_ws_url() -> str | None:
-    """端口文件不可读时的兜底（如 macOS 沙盒/隐私保护使 Chrome 数据目录不可访问）。
-
-    优先取环境变量 POLARIS_BROWSER_CDP_URL；否则探测本机 127.0.0.1:9222 是否在监听，
-    监听则使用无 id 的浏览器级端点 /devtools/browser（Chrome 的 inspect 开关模式支持，
-    仍需用户在弹窗中点击允许）。
-    """
-    env = os.environ.get("POLARIS_BROWSER_CDP_URL", "").strip()
-    if env:
-        return env
-    import socket
-
-    try:
-        with socket.create_connection(("127.0.0.1", DEFAULT_TOGGLE_PORT), timeout=0.5):
-            return f"ws://127.0.0.1:{DEFAULT_TOGGLE_PORT}/devtools/browser"
-    except OSError:
-        return None
+PORT_FILE_UNREADABLE_MSG = (
+    "无权读取 Chrome 数据目录中的 DevToolsActivePort（macOS 可能需要授予该进程访问权限），"
+    "请改用 Polaris Browser Bridge 扩展，或设置 POLARIS_BROWSER_CDP_URL"
+)
 
 
 def locate_chrome_executable() -> tuple[str | None, str]:
@@ -213,11 +202,11 @@ class CdpToggleBackend:
         self._on_disconnected_cb = cb
 
     def can_connect(self) -> bool:
-        """检查 DevToolsActivePort 是否可读，或存在可用的兜底调试端点。"""
-        p = find_devtools_port_file()
-        if p and read_devtools_ws_url(p) is not None:
+        """检查 DevToolsActivePort 是否可读，或已显式指定 POLARIS_BROWSER_CDP_URL。"""
+        if env_cdp_url() is not None:
             return True
-        return fallback_ws_url() is not None
+        p = find_devtools_port_file()
+        return p is not None and read_devtools_ws_url(p) is not None
 
     def unattended_ok(self) -> bool:
         """未连接时禁止无人值守发起连接，防止半夜静默弹窗阻塞。"""
@@ -225,17 +214,12 @@ class CdpToggleBackend:
 
     async def connect(self, pw: Playwright) -> Browser:
         """通过 CDP 连接至日常 Chrome。"""
-        p = find_devtools_port_file()
-        ws_url = read_devtools_ws_url(p) if p else None
+        ws_url = env_cdp_url()
         if not ws_url:
-            ws_url = fallback_ws_url()
+            p = find_devtools_port_file()
+            ws_url = read_devtools_ws_url(p) if p else None
         if not ws_url:
-            raise HubError(
-                "attach_failed",
-                "无法获得 Chrome 调试端点：未找到/无法读取 DevToolsActivePort，且 127.0.0.1:9222 未监听。"
-                "请确认 Chrome 正在运行并已打开 chrome://inspect 远程调试开关；"
-                "macOS 上也可设置环境变量 POLARIS_BROWSER_CDP_URL，或使用 managed 专用配置",
-            )
+            raise HubError("attach_failed", PORT_FILE_UNREADABLE_MSG)
 
         # 60 秒超时时间供用户在弹窗中点击「允许」
         browser = await pw.chromium.connect_over_cdp(ws_url, timeout=60000)
