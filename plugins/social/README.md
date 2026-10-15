@@ -1,5 +1,7 @@
 # Polaris Social（polaris-social）— 社交平台读写插件 (v3.0.0)
 
+> 完整文档：[docs/social.md](../../docs/social.md) · 配方：[docs/recipes.md](../../docs/recipes.md)
+
 读与写同处一个插件：复用你已登录的 Chrome，读取知乎 / X / 微博 / 小红书的搜索、热榜、用户动态与帖文正文，
 并在多平台发帖与互动。**读取与发帖、互动共享同一平台的限速与风控熔断**（SQLite 跨进程），
 一边采集一边发帖时频率不会叠加。

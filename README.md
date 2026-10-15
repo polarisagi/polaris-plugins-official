@@ -124,6 +124,10 @@ plugins/
   marketplace.json               # Codex repo-level marketplace catalog
 ```
 
+## Documentation
+
+Usage, architecture, recipes, pipelines and troubleshooting (in Chinese): [docs/README.md](docs/README.md)
+
 ## License
 
 This project is licensed under the **GNU AGPLv3 License** — see the [LICENSE](LICENSE) file for details. For commercial use without open sourcing your code, please contact the author for a commercial license.

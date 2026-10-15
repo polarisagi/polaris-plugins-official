@@ -1,5 +1,7 @@
 # Polaris 资料库（Polaris Knowledge Vault）MCP (v2.0.0)
 
+> 完整文档：[docs/knowledge-base.md](../../docs/knowledge-base.md)
+
 [Polaris](https://polarisagi.online/) 官方资料库插件：把采集结果与摘要落成带 YAML 元信息头的 Markdown（默认 `~/Polaris/Vault`，
 Obsidian 兼容），按 URL 去重，并提供列表、全文检索（SQLite FTS5，支持中文）、读取、打标签与移动。
 内核用 `ObsidianConnector` 把资料库目录同步进 RAG，本插件不做入库逻辑。MCP 服务器名保持 `polaris-knowledge-base`。

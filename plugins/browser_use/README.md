@@ -1,5 +1,7 @@
 # Polaris Browser Use MCP (v2.1.0)
 
+> 完整文档：[docs/browser-use.md](../../docs/browser-use.md)
+
 Polaris 官方通用浏览器自动化插件（打开、正文读取、快照、交互与浏览器连接）。
 复用你日常已登录的 Chrome 浏览器会话，支持现代化省 token DOM 快照交互。
 

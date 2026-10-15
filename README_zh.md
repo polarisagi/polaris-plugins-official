@@ -124,6 +124,10 @@ plugins/
   marketplace.json               # 本仓库的 Codex Marketplace 索引
 ```
 
+## 文档
+
+使用、架构、配方、流水线与排障文档见 [docs/README.md](docs/README.md)。
+
 ## 开源协议
 
 本项目采用 **GNU AGPLv3** 协议开源 — 详见 [LICENSE](LICENSE) 文件。对于希望闭源商用的企业用户，请联系作者获取商业授权（Dual License）。
