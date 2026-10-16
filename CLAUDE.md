@@ -99,6 +99,12 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 使用 `FastMCP` + Patchright。只做通用浏览器能力与浏览器连接（BrowserHub：扩展桥接 / CDP / 托管 profile），**不含任何平台知识、站点配方或限速**。暴露工具：`browser_open`、`browser_read`、`browser_snapshot`、`browser_act`、`browser_scroll`、`browser_extract`、`browser_tabs`、`browser_status`。已知社交平台请使用 `social` 插件。`POLARIS_BROWSER_CDP_URL` 可显式指定 CDP 端点；读不到 `DevToolsActivePort` 时不再猜测端口。
 
+**浏览器后端与驱动：**
+- `auto`（默认）裁决顺序：Polaris Browser Bridge 扩展 → 日常 Chrome CDP → 托管 profile。扩展曾握手成功（`~/.config/polaris-plugins/browser/bridge_ext_seen`）时 auto 模式会等扩展 35 秒，避免回落到需要人工点「允许」的 CDP。
+- 驱动默认值：`cdp` / `extension` 后端用 **playwright**（patchright 附着日常 Chrome 时 `connect_over_cdp` 会卡死），`managed` 用 patchright；`POLARIS_BROWSER_DRIVER` 可覆盖。两套驱动异常类互不继承，捕获时统一用 `browser_hub.PW_ERRORS`，不要直接 `except PwError`。
+- CDP 后端：macOS 上读 `DevToolsActivePort` 需给启动插件的 App（终端 / Claude / Polaris）授予「完全磁盘访问权限」；每次新连接 Chrome 都会弹「允许远程调试」，读工具（`unattended=True`）不会主动触发该弹窗。日常 Chrome 中若有冻结/卡死的标签页，Playwright 初始化全部标签时会超时。
+- 扩展（`plugins/browser_use/extension/`）：中继透传 CDP 时，扩展必须上报 Chrome 真实的 `targetId`（Playwright 依赖「主框架 id == targetId」）；透传命令的应答须在扩展读循环中直接回写，以保持「应答先于其后事件」的顺序。扩展日志回传到 `~/.config/polaris-plugins/browser/bridge_ext.log`；修改扩展代码后执行 `cd plugins/social && uv run python scripts/bridge_reload.py` 即可让已配对扩展从磁盘重载。
+
 ---
 
 ### knowledge_base — 资料库（Vault，v2.0.0）
@@ -121,7 +127,9 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 - **写工具**：`auto_post`、`batch_post`、`post_video`、`post_thread`、`like_post` 等原有工具，声明 `readOnlyHint=False, destructiveHint=True`；执行前经 `rate_limited_write` 占用名额，被限速时返回错误码而不执行。无配方平台使用保守默认限速（10 秒间隔、20 次/小时、60 次/天）。
 - 支持写入的平台：`twitter`、`instagram`、`facebook`、`weibo`、`xiaohongshu`、`douyin`、`wechat`、`tiktok`、`linkedin`、`threads`。每个平台有独立 Adapter（`src/adapters/`）；调用写工具前**必须先执行 `get_platform_skill(platform)`**。
 - 技能文件位于 `skills/social/`（入口 `SKILL.md`，平台规范 `*_skill.md`）。
-- 真机冒烟：`cd plugins/social && POLARIS_BROWSER_BACKEND=cdp uv run python scripts/live_smoke.py | tee /tmp/live_smoke.log`（只读、单连接）。
+- `social_feed(platform, handle)`：handle 非空取该用户时间线（`user_timeline`），为空取当前登录账号的关注流（配方 `following` 动作，目前 x 支持）。
+- XHR 配方字段支持 `a | b` 备选路径、`items` 中 `*` 通配、`=` 前缀模板字段（如 `=https://x.com/{author}/status/{tweet_id}`）、`url_glob` 多模式 `|` 分隔，以及 `require` 过滤空字段条目。
+- 真机冒烟：`cd plugins/social && POLARIS_BROWSER_BACKEND=extension uv run python scripts/live_smoke.py --sites x | tee /tmp/live_smoke.log`（只读、单连接；`cdp` 后端需人工点「允许」）。
 
 ---
 
