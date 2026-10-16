@@ -18,13 +18,17 @@ import re
 from typing import Any
 from urllib.parse import quote
 
-from patchright.async_api import Error as PwError
 from patchright.async_api import Page, Response
 
 from ..ratelimit import acquire, mark_blocked
-from ..utils.browser_hub import HubError, get_hub
+from ..utils.browser_hub import HubError, PlaywrightError, PwError, get_hub
 from ..utils.extract import extract_structured
-from .normalize import get_dot_path, normalize_items
+from .normalize import (
+    get_path_alternatives,
+    get_path_wildcard,
+    normalize_items,
+    render_field_template,
+)
 from .recipe import Action, BlockSignals, CssExtract, Recipe, Step, XhrExtract
 
 logger = logging.getLogger("polaris.harvest.engine")
@@ -86,7 +90,7 @@ async def check_block_signals(
                     raise HubError(
                         "blocked", f"目标站点 {site_id} 页面显示风控文案: {sub}"
                     )
-        except (PwError, OSError):
+        except (PwError, PlaywrightError, OSError):
             pass
 
 
@@ -142,23 +146,43 @@ async def _check_login_state(
             )
     except HubError:
         raise
-    except (PwError, OSError) as e:
+    except (PwError, PlaywrightError, OSError) as e:
         logger.debug("探测登录态异常: %s", e)
+
+
+def url_matches_glob(url: str, url_glob: str) -> bool:
+    """URL 是否匹配任一通配模式（多个模式以「|」分隔）。"""
+    return any(
+        fnmatch.fnmatch(url, g.strip()) for g in url_glob.split("|") if g.strip()
+    )
 
 
 def _extract_xhr_items(
     captured_json: list[Any], xhr_spec: XhrExtract
 ) -> list[dict[str, Any]]:
-    """从拦截到的 JSON 数据流中按点路径抽取结构化字段。"""
+    """从拦截到的 JSON 数据流中按点路径抽取结构化字段。
+
+    先取普通路径字段，再渲染「=」模板字段（可引用前者），最后按 require 过滤并按 id 去重。
+    """
     items: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    templates = {k: v[1:] for k, v in xhr_spec.fields.items() if v.startswith("=")}
     for payload in captured_json:
-        matched_list = get_dot_path(payload, xhr_spec.items)
-        if isinstance(matched_list, list):
-            for raw in matched_list:
-                item: dict[str, Any] = {}
-                for k, dot_path in xhr_spec.fields.items():
-                    item[k] = get_dot_path(raw, dot_path)
-                items.append(item)
+        for raw in get_path_wildcard(payload, xhr_spec.items):
+            item: dict[str, Any] = {}
+            for k, dot_path in xhr_spec.fields.items():
+                if k not in templates:
+                    item[k] = get_path_alternatives(raw, dot_path)
+            for k, tpl in templates.items():
+                item[k] = render_field_template(tpl, item)
+            if any(item.get(r) in (None, "") for r in xhr_spec.require):
+                continue
+            item_id = str(item.get("id") or "")
+            if item_id and item_id in seen_ids:
+                continue
+            if item_id:
+                seen_ids.add(item_id)
+            items.append(item)
     return items
 
 
@@ -230,14 +254,19 @@ async def run_harvest(
     # 3. 若为 XHR 模式，注册响应拦截监听器
     async def on_response(resp: Response) -> None:
         try:
-            if isinstance(action.extract, XhrExtract) and fnmatch.fnmatch(
+            if isinstance(action.extract, XhrExtract) and url_matches_glob(
                 resp.url, action.extract.url_glob
             ):
                 ct = resp.headers.get("content-type", "")
                 if "json" in ct or "javascript" in ct:
                     body = await resp.json()
                     captured_json.append(body)
-        except (PwError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        except (
+            PwError,
+            PlaywrightError,
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+        ) as e:
             logger.debug("解析拦截响应异常: %s", e)
 
     is_xhr = isinstance(action.extract, XhrExtract)

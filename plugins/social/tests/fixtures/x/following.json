@@ -1,0 +1,143 @@
+{
+ "data": {
+  "home": {
+   "home_timeline_urt": {
+    "instructions": [
+     {
+      "type": "TimelineClearCache"
+     },
+     {
+      "type": "TimelineAddEntries",
+      "entries": [
+       {
+        "entryId": "cursor-top-1",
+        "content": {
+         "__typename": "TimelineTimelineCursor",
+         "value": "x"
+        }
+       },
+       {
+        "entryId": "tweet-2111097422810169575",
+        "content": {
+         "__typename": "TimelineTimelineItem",
+         "itemContent": {
+          "__typename": "TimelineTweet",
+          "tweet_results": {
+           "result": {
+            "__typename": "Tweet",
+            "rest_id": "2111097422810169575",
+            "core": {
+             "user_results": {
+              "result": {
+               "__typename": "User",
+               "rest_id": "42",
+               "core": {
+                "screen_name": "dotey"
+               }
+              }
+             }
+            },
+            "legacy": {
+             "full_text": "short text https://t.co/a",
+             "created_at": "Fri Oct 16 14:10:22 +0000 2026",
+             "favorite_count": 61,
+             "retweet_count": 1,
+             "reply_count": 2
+            },
+            "views": {
+             "count": "1000"
+            },
+            "note_tweet": {
+             "note_tweet_results": {
+              "result": {
+               "text": "完整长文：handwired 学习笔记"
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       {
+        "entryId": "tweet-2111093107228135428",
+        "content": {
+         "__typename": "TimelineTimelineItem",
+         "itemContent": {
+          "__typename": "TimelineTweet",
+          "tweet_results": {
+           "result": {
+            "__typename": "TweetWithVisibilityResults",
+            "tweet": {
+             "__typename": "Tweet",
+             "rest_id": "2111093107228135428",
+             "core": {
+              "user_results": {
+               "result": {
+                "__typename": "User",
+                "rest_id": "42",
+                "core": {
+                 "screen_name": "someone"
+                }
+               }
+              }
+             },
+             "legacy": {
+              "full_text": "wrapped tweet",
+              "created_at": "Fri Oct 16 14:10:22 +0000 2026",
+              "favorite_count": 5,
+              "retweet_count": 1,
+              "reply_count": 2
+             },
+             "views": {
+              "count": "1000"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       {
+        "entryId": "tweet-2111097422810169575",
+        "content": {
+         "__typename": "TimelineTimelineItem",
+         "itemContent": {
+          "__typename": "TimelineTweet",
+          "tweet_results": {
+           "result": {
+            "__typename": "Tweet",
+            "rest_id": "2111097422810169575",
+            "core": {
+             "user_results": {
+              "result": {
+               "__typename": "User",
+               "rest_id": "42",
+               "core": {
+                "screen_name": "dotey"
+               }
+              }
+             }
+            },
+            "legacy": {
+             "full_text": "duplicate",
+             "created_at": "Fri Oct 16 14:10:22 +0000 2026",
+             "favorite_count": 61,
+             "retweet_count": 1,
+             "reply_count": 2
+            },
+            "views": {
+             "count": "1000"
+            }
+           }
+          }
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

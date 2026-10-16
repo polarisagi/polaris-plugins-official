@@ -21,6 +21,10 @@ status = [403, 429]
 url_contains = ["/account/access", "/i/flow/login", "challenge"]
 text_contains = ["Rate limit exceeded", "Something went wrong", "Suspicious activity"]
 
+# 字段路径依据 2026-10 真机抓包：screen_name 已迁至 user_results.result.core，
+# 「TweetWithVisibilityResults」类条目的推文数据位于 result.tweet 下，故均提供备选路径。
+# instructions 下 entries 的下标随页面变化（搜索为 0、主页时间线为 2），统一用「*」通配。
+
 [actions.search]
 description = "搜索 X 实时推文"
 
@@ -28,12 +32,6 @@ description = "搜索 X 实时推文"
 type = "string"
 description = "搜索关键词"
 required = true
-
-[actions.search.params.mode]
-type = "string"
-description = "搜索模式: top 或 latest"
-default = "top"
-required = false
 
 [[actions.search.steps]]
 goto = "https://x.com/search?q={q|urlencode}&f=live"
@@ -46,16 +44,21 @@ scroll = { direction = "down", times = 2 }
 [actions.search.extract]
 method = "xhr"
 url_glob = "*/graphql/*/SearchTimeline*"
-items = "data.search_by_raw_query.search_timeline.timeline.instructions[0].entries"
+items = "data.search_by_raw_query.search_timeline.timeline.instructions.*.entries"
+require = ["tweet_id", "title"]
 
 [actions.search.extract.fields]
-id = "entryId"
-title = "content.itemContent.tweet_results.result.legacy.full_text"
-excerpt = "content.itemContent.tweet_results.result.legacy.full_text"
-author = "content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
-published_at = "content.itemContent.tweet_results.result.legacy.created_at"
-"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count"
-"metrics.retweets" = "content.itemContent.tweet_results.result.legacy.retweet_count"
+id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+tweet_id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+author = "content.itemContent.tweet_results.result.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.tweet.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
+url = "=https://x.com/{author}/status/{tweet_id}"
+title = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+excerpt = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+published_at = "content.itemContent.tweet_results.result.legacy.created_at | content.itemContent.tweet_results.result.tweet.legacy.created_at"
+"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count | content.itemContent.tweet_results.result.tweet.legacy.favorite_count"
+"metrics.retweets" = "content.itemContent.tweet_results.result.legacy.retweet_count | content.itemContent.tweet_results.result.tweet.legacy.retweet_count"
+"metrics.replies" = "content.itemContent.tweet_results.result.legacy.reply_count | content.itemContent.tweet_results.result.tweet.legacy.reply_count"
+"metrics.views" = "content.itemContent.tweet_results.result.views.count | content.itemContent.tweet_results.result.tweet.views.count"
 
 [actions.search.extract_fallback]
 method = "css"
@@ -86,16 +89,23 @@ scroll = { direction = "down", times = 2 }
 
 [actions.user_timeline.extract]
 method = "xhr"
-url_glob = "*/graphql/*/UserTweets*"
-items = "data.user.result.timeline_v2.timeline.instructions[0].entries"
+# 2026 起个人主页默认请求 UserOriginalsTimeline，保留旧名 UserTweets 兼容
+url_glob = "*/graphql/*/UserOriginalsTimeline*|*/graphql/*/UserTweets*"
+items = "data.user.result.timeline.timeline.instructions.*.entries | data.user.result.timeline_v2.timeline.instructions.*.entries"
+require = ["tweet_id", "title"]
 
 [actions.user_timeline.extract.fields]
-id = "entryId"
-title = "content.itemContent.tweet_results.result.legacy.full_text"
-excerpt = "content.itemContent.tweet_results.result.legacy.full_text"
-author = "content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
-published_at = "content.itemContent.tweet_results.result.legacy.created_at"
-"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count"
+id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+tweet_id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+author = "content.itemContent.tweet_results.result.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.tweet.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
+url = "=https://x.com/{author}/status/{tweet_id}"
+title = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+excerpt = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+published_at = "content.itemContent.tweet_results.result.legacy.created_at | content.itemContent.tweet_results.result.tweet.legacy.created_at"
+"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count | content.itemContent.tweet_results.result.tweet.legacy.favorite_count"
+"metrics.retweets" = "content.itemContent.tweet_results.result.legacy.retweet_count | content.itemContent.tweet_results.result.tweet.legacy.retweet_count"
+"metrics.replies" = "content.itemContent.tweet_results.result.legacy.reply_count | content.itemContent.tweet_results.result.tweet.legacy.reply_count"
+"metrics.views" = "content.itemContent.tweet_results.result.views.count | content.itemContent.tweet_results.result.tweet.views.count"
 
 [actions.user_timeline.extract_fallback]
 method = "css"
@@ -106,3 +116,54 @@ title = "div[data-testid='tweetText']"
 excerpt = "div[data-testid='tweetText']"
 author = "div[data-testid='User-Name']"
 url = "a[href*='/status/']@href"
+"metrics.replies" = "button[data-testid='reply']"
+
+[actions.following]
+description = "获取「正在关注」时间线：已登录账号所关注的人的最新推文（按时间倒序）"
+
+[[actions.following.steps]]
+goto = "https://x.com/home"
+wait_for = "[role='tab']"
+timeout_s = 15.0
+
+[[actions.following.steps]]
+# 首页第二个标签即「正在关注 / Following」，按位置定位以兼容中英文界面
+click = "[role='tablist'] [role='tab'] >> nth=1"
+timeout_s = 10.0
+
+[[actions.following.steps]]
+wait_for = "article[data-testid='tweet']"
+timeout_s = 15.0
+
+[[actions.following.steps]]
+scroll = { direction = "down", times = 2 }
+
+[actions.following.extract]
+method = "xhr"
+url_glob = "*/graphql/*/HomeLatestTimeline*"
+items = "data.home.home_timeline_urt.instructions.*.entries"
+require = ["tweet_id", "title"]
+
+[actions.following.extract.fields]
+id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+tweet_id = "content.itemContent.tweet_results.result.rest_id | content.itemContent.tweet_results.result.tweet.rest_id"
+author = "content.itemContent.tweet_results.result.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.tweet.core.user_results.result.core.screen_name | content.itemContent.tweet_results.result.core.user_results.result.legacy.screen_name"
+url = "=https://x.com/{author}/status/{tweet_id}"
+title = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+excerpt = "content.itemContent.tweet_results.result.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.legacy.full_text | content.itemContent.tweet_results.result.tweet.note_tweet.note_tweet_results.result.text | content.itemContent.tweet_results.result.tweet.legacy.full_text"
+published_at = "content.itemContent.tweet_results.result.legacy.created_at | content.itemContent.tweet_results.result.tweet.legacy.created_at"
+"metrics.likes" = "content.itemContent.tweet_results.result.legacy.favorite_count | content.itemContent.tweet_results.result.tweet.legacy.favorite_count"
+"metrics.retweets" = "content.itemContent.tweet_results.result.legacy.retweet_count | content.itemContent.tweet_results.result.tweet.legacy.retweet_count"
+"metrics.replies" = "content.itemContent.tweet_results.result.legacy.reply_count | content.itemContent.tweet_results.result.tweet.legacy.reply_count"
+"metrics.views" = "content.itemContent.tweet_results.result.views.count | content.itemContent.tweet_results.result.tweet.views.count"
+
+[actions.following.extract_fallback]
+method = "css"
+container = "article[data-testid='tweet']"
+
+[actions.following.extract_fallback.fields]
+title = "div[data-testid='tweetText']"
+excerpt = "div[data-testid='tweetText']"
+author = "div[data-testid='User-Name']"
+url = "a[href*='/status/']@href"
+"metrics.replies" = "button[data-testid='reply']"

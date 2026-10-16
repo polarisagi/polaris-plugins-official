@@ -23,6 +23,7 @@ For Zhihu, X (Twitter), Weibo and Xiaohongshu, **read with the `social_*` tools,
 | Search posts / questions | `social_search(platform, query, max_items)` |
 | Trending list (zhihu, weibo) | `social_hot(platform, max_items)` |
 | A user's public timeline (x) | `social_feed(platform, handle, max_items)` |
+| Latest posts from accounts the logged-in user follows (x) | `social_feed(platform, "", max_items)` — leave `handle` empty |
 | Full text of one post/article as Markdown | `social_read(url, max_chars, offset)` (paginate with `next_offset`) |
 | Check a recipe still works | `social_selftest(platform)` |
 

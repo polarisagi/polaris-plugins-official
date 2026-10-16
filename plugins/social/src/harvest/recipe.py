@@ -83,9 +83,22 @@ class XhrExtract(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     method: Literal["xhr"] = "xhr"
-    url_glob: str = Field(description="匹配目标接口的 URL 通配模式")
-    items: str = Field(description="响应 JSON 中列表数据的点路径，如 data.items")
-    fields: dict[str, str] = Field(description="每个条目内部字段的点路径映射")
+    url_glob: str = Field(
+        description="匹配目标接口的 URL 通配模式，多个模式用「|」分隔"
+    )
+    items: str = Field(
+        description="响应 JSON 中列表数据的点路径，如 data.items；支持「*」通配与「a | b」备选"
+    )
+    fields: dict[str, str] = Field(
+        description=(
+            "每个条目内部字段的点路径映射；支持「a | b」备选路径，"
+            "以「=」开头的值为模板，可引用其他字段，如 =https://x.com/{author}/status/{id}"
+        )
+    )
+    require: list[str] = Field(
+        default_factory=list,
+        description="这些字段为空的条目会被丢弃（用于过滤游标、推荐卡片等非内容条目）",
+    )
 
 
 class CssExtract(BaseModel):

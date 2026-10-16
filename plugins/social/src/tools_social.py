@@ -19,14 +19,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 import trafilatura
-from patchright.async_api import Error as PwError
 
 from .gate import FALLBACK_KEY, WRITE_PLATFORMS, limits_for, platform_for_url, rate_key
 from .harvest.engine import check_block_signals
 from .harvest.loader import load_all_recipes
 from .ratelimit import acquire, get_site_status
 from .tools_harvest import tool_harvest, tool_harvest_selftest
-from .utils.browser_hub import HubError, get_hub
+from .utils.browser_hub import HubError, PlaywrightError, PwError, get_hub
 from .utils.extract import paginate_content
 
 logger = logging.getLogger("polaris.tools_social")
@@ -93,14 +92,17 @@ async def tool_social_hot(platform: str, max_items: int) -> dict[str, Any]:
 async def tool_social_feed(
     platform: str, handle: str, max_items: int
 ) -> dict[str, Any]:
-    """获取指定用户的公开动态时间线。"""
+    """获取动态：给定 handle 时取该用户的公开时间线；handle 为空时取当前登录账号的
+    「正在关注」时间线（平台配方需提供 following 动作）。"""
     recipes, _ = load_all_recipes()
     recipe = recipes.get(platform)
-    if recipe is not None and "user_timeline" not in recipe.actions:
-        return await _run_action(platform, "user_timeline", {}, max_items)
     h = handle.strip().lstrip("@")
     if not h:
-        return err("invalid_args", "handle 不能为空")
+        if recipe is not None and "following" in recipe.actions:
+            return await _run_action(platform, "following", {}, max_items)
+        return err("invalid_args", "该平台不支持关注流，请提供 handle")
+    if recipe is not None and "user_timeline" not in recipe.actions:
+        return await _run_action(platform, "user_timeline", {}, max_items)
     return await _run_action(platform, "user_timeline", {"handle": h}, max_items)
 
 
@@ -161,7 +163,7 @@ async def tool_social_read(url: str, max_chars: int, offset: int) -> dict[str, A
                 await check_block_signals(page, resp, recipe.block_signals, key)
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
-            except PwError:
+            except (PwError, PlaywrightError):
                 logger.debug("等待 networkidle 超时，按已加载内容抽取: %s", url)
             await asyncio.sleep(random.uniform(0.3, 0.8))
             html = await page.content()
@@ -171,7 +173,7 @@ async def tool_social_read(url: str, max_chars: int, offset: int) -> dict[str, A
             hub.page_lock.release()
     except HubError as e:
         return _hub_err(e)
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return err("read_failed", str(e))
 
     art = extract_article(html, final_url)
@@ -200,7 +202,7 @@ async def tool_social_selftest(platform: str) -> dict[str, Any]:
         res = await tool_harvest_selftest(platform)
     except HubError as e:
         return _hub_err(e)
-    except (PwError, OSError, RuntimeError, ValueError) as e:
+    except (PwError, PlaywrightError, OSError, RuntimeError, ValueError) as e:
         return err("selftest_failed", str(e))
     if "site" in res:
         res = {**res, "platform": res.pop("site")}

@@ -76,7 +76,8 @@ async def social_feed(
     handle: Annotated[str, Field(max_length=100)] = "",
     max_items: MaxItems = 20,
 ) -> dict[str, Any]:
-    """获取指定用户(handle，无需 @)的公开动态；平台无该动作时返回错误码 unsupported_action。"""
+    """获取动态。handle（无需 @）非空时返回该用户的公开时间线；handle 为空时返回当前登录账号
+    「正在关注」的人的最新动态（目前 x 支持）。平台无对应动作时返回错误码 unsupported_action。"""
     return await tool_social_feed(platform, handle, max_items)
 
 

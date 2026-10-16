@@ -47,7 +47,8 @@ async def test_unsupported_action_error() -> None:
     res = await tools_social.tool_social_search("zhihu", "   ", 5)
     assert res["error"]["code"] == "invalid_args"
 
-    res = await tools_social.tool_social_feed("x", "  @ ", 5)
+    # handle 为空且平台没有关注流（following）时才报参数错误
+    res = await tools_social.tool_social_feed("zhihu", "  @ ", 5)
     assert res["error"]["code"] == "invalid_args"
 
 
@@ -75,10 +76,12 @@ async def test_action_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     await tools_social.tool_social_hot("weibo", 3)
     await tools_social.tool_social_feed("x", "@OpenAI", 4)
+    await tools_social.tool_social_feed("x", "", 6)
     assert calls == [
         ("zhihu", "search", {"q": "AI Agent"}, 7),
         ("weibo", "hot", {}, 3),
         ("x", "user_timeline", {"handle": "OpenAI"}, 4),
+        ("x", "following", {}, 6),
     ]
 
 

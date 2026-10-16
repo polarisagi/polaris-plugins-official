@@ -114,7 +114,10 @@ def test_x_xhr_extraction() -> None:
     assert len(raw_search) == 1
     norm_search = normalize_items(raw_search, "x", recipe.site.base_url)
     assert len(norm_search) == 1
-    assert norm_search[0]["id"] == "tweet-189000111222333444"
+    assert norm_search[0]["id"] == "189000111222333444"
+    assert (
+        norm_search[0]["url"] == "https://x.com/ai_researcher/status/189000111222333444"
+    )
     assert "Autonomous Agents" in norm_search[0]["title"]
     assert norm_search[0]["author"] == "ai_researcher"
     assert norm_search[0]["metrics"].get("likes") == 890
@@ -128,10 +131,31 @@ def test_x_xhr_extraction() -> None:
     assert len(raw_timeline) == 1
     norm_timeline = normalize_items(raw_timeline, "x", recipe.site.base_url)
     assert len(norm_timeline) == 1
-    assert norm_timeline[0]["id"] == "tweet-189000555666777888"
+    assert norm_timeline[0]["id"] == "189000555666777888"
+    assert norm_timeline[0]["url"].endswith("/OpenAI/status/189000555666777888")
     assert "Announcing" in norm_timeline[0]["title"]
     assert norm_timeline[0]["author"] == "OpenAI"
     assert norm_timeline[0]["metrics"].get("likes") == 4500
+
+
+def test_x_following_new_shape() -> None:
+    """2026-10 新结构：screen_name 在 core 下、entries 不在 instructions[0]、
+    可见性包装条目、游标条目与重复条目。"""
+    recipes, _ = load_all_recipes()
+    act = recipes["x"].actions["following"]
+    assert isinstance(act.extract, XhrExtract)
+    raw = _extract_xhr_items([_load_fixture("x", "following.json")], act.extract)
+    norm = normalize_items(raw, "x", recipes["x"].site.base_url)
+    # 游标被 require 过滤、重复 id 去重，只剩两条
+    assert [i["id"] for i in norm] == ["2111097422810169575", "2111093107228135428"]
+    assert norm[0]["author"] == "dotey"
+    assert norm[0]["url"] == "https://x.com/dotey/status/2111097422810169575"
+    # 长推文优先取 note_tweet 全文
+    assert norm[0]["title"].startswith("完整长文")
+    assert norm[1]["author"] == "someone"
+    assert norm[1]["url"] == "https://x.com/someone/status/2111093107228135428"
+    assert norm[0]["metrics"].get("likes") == 61
+    assert norm[0]["published_at"] == "2026-10-16T14:10:22+00:00"
 
 
 def test_weibo_xhr_extraction() -> None:
