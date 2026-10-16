@@ -5,7 +5,7 @@ description = "Polaris MCP plugin: Markdown knowledge vault (kb_save/kb_list/kb_
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "mcp>=1.27.2,<2",
+    "mcp>=1.30.0,<2",
     "pydantic>=2.9",
 ]
 

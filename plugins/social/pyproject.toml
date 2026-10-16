@@ -5,7 +5,7 @@ description = "Polaris plugin: read (search/hot/feed/read) and write (post/inter
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "mcp>=1.27.2,<2",
+    "mcp>=1.30.0,<2",
     "patchright>=1.55",
     "playwright>=1.40.0",
     "pydantic>=2.9",
