@@ -17,10 +17,60 @@ const connections = new Map();
 // tabId -> port
 const tabToPort = new Map();
 
+// port -> 尚未完成握手的 WebSocket。同一端口只允许一条在途连接：
+// 否则重复握手会让中继踢掉旧连接，旧连接关闭时又分离了刚建好的标签调试器
+const pendingSockets = new Map();
+
+const EXT_VERSION = chrome.runtime.getManifest().version;
+
+// 日志：同时写本地控制台并回传给所有已握手的中继（中继落盘到
+// ~/.config/polaris-plugins/browser/bridge_ext.log），便于无界面排障
+function log(level, ...args) {
+  const text = args
+    .map((a) => (typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()))
+    .join(" ");
+  (level === "error" ? console.error : console.log)(`[bridge] ${text}`);
+  for (const conn of connections.values()) {
+    if (conn.ws.readyState === WebSocket.OPEN) {
+      try {
+        conn.ws.send(JSON.stringify({ type: "log", level, msg: text, ts: Date.now() }));
+      } catch {}
+    }
+  }
+}
+
+// 无可用连接时短间隔重试；service worker 存活期间生效，休眠后由 alarms 兜底唤醒
+let reconnectTimer = null;
+function scheduleReconnect(delayMs = 2000) {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    const hasOpen = [...connections.values()].some((c) => c.ws.readyState === WebSocket.OPEN);
+    if (!hasOpen) {
+      discoverAndConnect();
+      scheduleReconnect(Math.min(delayMs * 2, 15000));
+    }
+  }, delayMs);
+}
+
 // 获取配对令牌
 async function getStoredToken() {
   const data = await chrome.storage.local.get(["token"]);
   return data.token || "";
+}
+
+// 工具栏图标角标：已连接 ✓（绿）、令牌被拒 !（红）、其余清空
+async function updateBadge(connected) {
+  const { lastAuthError, token } = await chrome.storage.local.get(["lastAuthError", "token"]);
+  if (connected) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
+    await chrome.action.setBadgeText({ text: "✓" });
+  } else if (!token || lastAuthError) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
+    await chrome.action.setBadgeText({ text: "!" });
+  } else {
+    await chrome.action.setBadgeText({ text: "" });
+  }
 }
 
 // 记录连接状态供 options 页面展示
@@ -34,6 +84,7 @@ async function updateOptionsStatus() {
     });
   }
   await chrome.storage.local.set({ activeConnections: list });
+  await updateBadge(list.length > 0);
 }
 
 // 连接单个端口的中继
@@ -45,14 +96,23 @@ async function tryConnectPort(port) {
     }
   }
 
+  const pending = pendingSockets.get(port);
+  if (pending && (pending.readyState === WebSocket.OPEN || pending.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  // 先占位再 await，防止并发调用在读取令牌期间重复建连
+  pendingSockets.set(port, { readyState: WebSocket.CONNECTING });
+
   const token = await getStoredToken();
   const url = `ws://127.0.0.1:${port}/bridge`;
   let ws;
   try {
     ws = new WebSocket(url);
   } catch (err) {
+    pendingSockets.delete(port);
     return;
   }
+  pendingSockets.set(port, ws);
 
   const connState = {
     ws,
@@ -66,7 +126,7 @@ async function tryConnectPort(port) {
     ws.send(JSON.stringify({
       type: "hello",
       token: token,
-      ext_version: "1.0.0",
+      ext_version: EXT_VERSION,
       ua: navigator.userAgent
     }));
   };
@@ -81,8 +141,11 @@ async function tryConnectPort(port) {
 
     if (msg.type === "hello_ok") {
       connState.client = msg.client || "polaris";
+      if (pendingSockets.get(port) === ws) pendingSockets.delete(port);
       connections.set(port, connState);
+      await chrome.storage.local.set({ lastAuthError: null });
       await updateOptionsStatus();
+      log("info", `已与中继握手 port=${port} client=${connState.client} ext=${EXT_VERSION}`);
       return;
     }
 
@@ -97,16 +160,25 @@ async function tryConnectPort(port) {
     }
   };
 
-  ws.onclose = () => {
-    connections.delete(port);
-    for (const [tabId, p] of tabToPort.entries()) {
-      if (p === port) {
-        tabToPort.delete(tabId);
-        // 连接断开时安全分离调试器，但不关闭标签，避免用户未保存数据丢失
-        chrome.debugger.detach({ tabId }).catch(() => {});
+  ws.onclose = async (ev) => {
+    if (pendingSockets.get(port) === ws) pendingSockets.delete(port);
+    // 4401：中继拒绝令牌（或握手失败），先落盘再刷新状态，保证角标与设置页一致
+    if (ev && ev.code === 4401) {
+      await chrome.storage.local.set({ lastAuthError: { port, reason: ev.reason || "", ts: Date.now() } });
+    }
+    // 只清理本连接自己的记录：同端口可能已被新连接替换（如令牌变更后重连）
+    if (connections.get(port) === connState) {
+      connections.delete(port);
+      for (const tabId of connState.ownedTabs) {
+        if (tabToPort.get(tabId) === port) {
+          tabToPort.delete(tabId);
+          // 连接断开时安全分离调试器，但不关闭标签，避免用户未保存数据丢失
+          chrome.debugger.detach({ tabId }).catch(() => {});
+        }
       }
     }
-    updateOptionsStatus();
+    await updateOptionsStatus();
+    scheduleReconnect();
   };
 
   ws.onerror = () => {
@@ -135,57 +207,45 @@ async function isWindowValid(windowId) {
 // 处理中继下发的命令
 async function handleRelayCommand(port, connState, msg) {
   const { id, method, params } = msg;
+  const t0 = performance.now();
+  const ms = () => Math.round(performance.now() - t0);
 
   try {
+    if (method === "reloadExtension") {
+      log("info", "收到中继重载指令，扩展即将从磁盘重新加载");
+      connState.ws.send(JSON.stringify({ id, result: { ok: true, version: EXT_VERSION } }));
+      setTimeout(() => chrome.runtime.reload(), 200);
+      return;
+    }
+
     if (method === "createTab") {
       const targetUrl = (params && params.url) || "about:blank";
-      let windowId = connState.windowId;
-
-      const valid = await isWindowValid(windowId);
-      if (!valid) {
-        // 第一次创建独立窗口，focused: false 避免夺取用户当前打字焦点
-        const win = await chrome.windows.create({
-          url: targetUrl,
-          focused: false,
-          type: "normal"
-        });
-        connState.windowId = win.id;
-        windowId = win.id;
-        const tab = win.tabs[0];
-        const tabId = tab.id;
-
-        connState.ownedTabs.add(tabId);
-        tabToPort.set(tabId, port);
-
-        await chrome.debugger.attach({ tabId }, "1.3");
-
-        const targetInfo = {
-          targetId: `tab-${tabId}`,
-          type: "page",
-          title: tab.title || "",
-          url: tab.url || targetUrl,
-          attached: true,
-          browserContextId: "default"
-        };
-
-        connState.ws.send(JSON.stringify({
-          id,
-          result: { tabId, targetInfo }
-        }));
+      let tab;
+      if (await isWindowValid(connState.windowId)) {
+        tab = await chrome.tabs.create({ windowId: connState.windowId, url: targetUrl, active: false });
       } else {
-        const tab = await chrome.tabs.create({
-          windowId,
-          url: targetUrl,
-          active: false
-        });
-        const tabId = tab.id;
+        // 第一次创建独立窗口，focused: false 避免夺取用户当前打字焦点
+        log("info", `createTab: 新建独立窗口 url=${targetUrl}`);
+        const win = await chrome.windows.create({ url: targetUrl, focused: false, type: "normal" });
+        connState.windowId = win.id;
+        tab = win.tabs[0];
+        log("info", `createTab: 窗口已建 windowId=${win.id} (+${ms()}ms)`);
+      }
+      const tabId = tab.id;
+      connState.ownedTabs.add(tabId);
+      tabToPort.set(tabId, port);
 
-        connState.ownedTabs.add(tabId);
-        tabToPort.set(tabId, port);
+      await chrome.debugger.attach({ tabId }, "1.3");
 
-        await chrome.debugger.attach({ tabId }, "1.3");
-
-        const targetInfo = {
+      // 必须使用 Chrome 真实的 targetId：Playwright 以 targetId 作为主框架会话键，
+      // 且依赖「主框架 id == targetId」；伪造 id 会导致 goto 报 Frame has been detached
+      let targetInfo;
+      try {
+        const res = await chrome.debugger.sendCommand({ tabId }, "Target.getTargetInfo");
+        targetInfo = { ...res.targetInfo, attached: true };
+      } catch (e) {
+        log("error", `createTab: 读取 targetInfo 失败，回退为占位信息: ${e.message || e}`);
+        targetInfo = {
           targetId: `tab-${tabId}`,
           type: "page",
           title: tab.title || "",
@@ -193,12 +253,10 @@ async function handleRelayCommand(port, connState, msg) {
           attached: true,
           browserContextId: "default"
         };
-
-        connState.ws.send(JSON.stringify({
-          id,
-          result: { tabId, targetInfo }
-        }));
       }
+      log("info", `createTab: 已附着 tabId=${tabId} targetId=${targetInfo.targetId} (+${ms()}ms)`);
+
+      connState.ws.send(JSON.stringify({ id, result: { tabId, targetInfo } }));
       await updateOptionsStatus();
       return;
     }
@@ -278,6 +336,8 @@ async function handleRelayCommand(port, connState, msg) {
       error: { message: `Unknown method: ${method}` }
     }));
   } catch (err) {
+    const cdpMethod = method === "cdp" && params ? params.method : "";
+    log("error", `命令失败 ${method}${cdpMethod ? " " + cdpMethod : ""} (+${ms()}ms): ${err.message || err}`);
     connState.ws.send(JSON.stringify({
       id,
       error: { message: err.message || String(err) }
@@ -344,13 +404,39 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   updateOptionsStatus();
 });
 
-// 定时保活与自动重连
-chrome.alarms.create("bridge_discovery", { periodInMinutes: 1 });
+// 令牌变化后立即断开旧连接并用新令牌重连
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.token) {
+    for (const conn of connections.values()) {
+      try { conn.ws.close(); } catch {}
+    }
+    connections.clear();
+    for (const ws of pendingSockets.values()) {
+      try { if (ws.close) ws.close(); } catch {}
+    }
+    pendingSockets.clear();
+    discoverAndConnect();
+  }
+});
+
+// 首次安装且尚未配对时自动打开设置页
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === "install") {
+    const token = await getStoredToken();
+    if (!token) chrome.runtime.openOptionsPage();
+  }
+});
+
+// 定时保活与自动重连（Chrome 120+ 允许最短 30 秒）
+chrome.alarms.create("bridge_discovery", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "bridge_discovery") {
     discoverAndConnect();
   }
 });
 
-// 初始化启动探测
-discoverAndConnect();
+// 初始化：service worker 重启后内存中的连接已全部失效，先清掉存储里残留的连接状态
+updateOptionsStatus().finally(() => {
+  discoverAndConnect();
+  scheduleReconnect();
+});

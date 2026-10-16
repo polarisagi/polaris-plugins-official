@@ -12,10 +12,9 @@ import asyncio
 import re
 from typing import Any, Literal
 
-from patchright.async_api import Error as PwError
 from patchright.async_api import Page
 
-from .browser_hub import HubError, get_hub
+from .browser_hub import HubError, PlaywrightError, PwError, get_hub
 from .extract import extract_structured, read_page_content
 from .snapshot_js import SCROLL_INFO_JS, SNAPSHOT_JS
 
@@ -29,7 +28,7 @@ async def get_page_tab_id(page: Page) -> str:
         info = await s.send("Target.getTargetInfo")
         await s.detach()
         return str(info.get("targetInfo", {}).get("targetId", ""))
-    except (PwError, OSError):
+    except (PwError, PlaywrightError, OSError):
         return ""
 
 
@@ -55,7 +54,7 @@ async def tool_browser_open(url: str, new_tab: bool = False) -> dict[str, Any]:
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=3000)
-            except (PwError, TimeoutError):
+            except (PwError, PlaywrightError, TimeoutError):
                 pass
 
             tab_id = await get_page_tab_id(page)
@@ -71,7 +70,7 @@ async def tool_browser_open(url: str, new_tab: bool = False) -> dict[str, Any]:
             return res
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "attach_failed", "message": str(e)}}
 
 
@@ -92,7 +91,7 @@ async def tool_browser_read(
             return {"ok": True, **res}
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "no_page", "message": str(e)}}
 
 
@@ -118,7 +117,7 @@ async def tool_browser_snapshot(
             }
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "no_page", "message": str(e)}}
 
 
@@ -186,7 +185,14 @@ async def tool_browser_act(
             }
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, ValueError, RuntimeError) as e:
+    except (
+        PwError,
+        PlaywrightError,
+        OSError,
+        TimeoutError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         code = "timeout" if "timeout" in str(e).lower() else "invalid_args"
         return {"ok": False, "error": {"code": code, "message": str(e)}}
 
@@ -215,7 +221,7 @@ async def tool_browser_scroll(
             }
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "no_page", "message": str(e)}}
 
 
@@ -235,7 +241,14 @@ async def tool_browser_extract(
             return {"ok": True, "items": res["items"], "count": res["count"]}
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, ValueError, RuntimeError) as e:
+    except (
+        PwError,
+        PlaywrightError,
+        OSError,
+        TimeoutError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         return {"ok": False, "error": {"code": "invalid_args", "message": str(e)}}
 
 
@@ -292,7 +305,14 @@ async def tool_browser_tabs(
             raise HubError("invalid_args", f"不支持的 tabs 操作: {action}")
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, ValueError, RuntimeError) as e:
+    except (
+        PwError,
+        PlaywrightError,
+        OSError,
+        TimeoutError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         return {"ok": False, "error": {"code": "invalid_args", "message": str(e)}}
 
 
@@ -305,5 +325,5 @@ async def tool_browser_status() -> dict[str, Any]:
         return {"ok": True, **st}
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, TimeoutError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "internal_error", "message": str(e)}}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -183,3 +184,39 @@ async def test_connect_unreadable_port_file_message(
         await bh.CdpToggleBackend().connect(object())  # type: ignore[arg-type]
     assert "POLARIS_BROWSER_CDP_URL" in ei.value.message
     assert "Polaris Browser Bridge" in ei.value.message
+
+
+def test_diagnose_missing_port_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """文件不存在时提示打开远程调试开关，而不是误报权限问题。"""
+    monkeypatch.setattr(
+        bh,
+        "devtools_port_candidates",
+        lambda: [tmp_path / "Chrome" / "DevToolsActivePort"],
+    )
+    msg = bh.diagnose_devtools_port()
+    assert msg == bh.PORT_FILE_MISSING_MSG
+    assert "chrome://inspect" in msg
+
+
+def test_diagnose_unreadable_port_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """父目录不可访问时才提示权限问题。"""
+    locked = tmp_path / "Chrome"
+    locked.mkdir()
+    monkeypatch.setattr(
+        bh, "devtools_port_candidates", lambda: [locked / "DevToolsActivePort"]
+    )
+    monkeypatch.setattr(bh.os, "access", lambda *_a, **_k: False)
+    assert bh.diagnose_devtools_port().startswith(bh.PORT_FILE_UNREADABLE_MSG)
+
+
+def test_diagnose_malformed_port_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    f = tmp_path / "DevToolsActivePort"
+    f.write_text("not-a-port\n", encoding="utf-8")
+    monkeypatch.setattr(bh, "devtools_port_candidates", lambda: [f])
+    assert bh.diagnose_devtools_port().startswith(bh.PORT_FILE_MALFORMED_MSG)

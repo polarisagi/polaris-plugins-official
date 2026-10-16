@@ -10,11 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from patchright.async_api import Error as PwError
-
 from .harvest.engine import run_harvest
 from .harvest.loader import load_all_recipes
-from .utils.browser_hub import HubError
+from .utils.browser_hub import HubError, PlaywrightError, PwError
 
 logger = logging.getLogger("polaris.tools_harvest")
 
@@ -59,7 +57,7 @@ async def tool_harvest(
         }
     except HubError as e:
         return {"ok": False, "error": e.to_dict()}
-    except (PwError, OSError, ValueError, RuntimeError) as e:
+    except (PwError, PlaywrightError, OSError, ValueError, RuntimeError) as e:
         return {"ok": False, "error": {"code": "recipe_error", "message": str(e)}}
 
 
@@ -167,7 +165,7 @@ async def _run_single_action_selftest(
             "method_used": method_used,
             "error": None,
         }
-    except (HubError, PwError, OSError, RuntimeError, ValueError) as e:
+    except (HubError, PwError, PlaywrightError, OSError, RuntimeError, ValueError) as e:
         return {
             "action": action_name,
             "ok": False,

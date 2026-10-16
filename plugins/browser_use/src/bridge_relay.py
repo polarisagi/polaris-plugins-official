@@ -22,12 +22,11 @@ import uuid
 from typing import Any
 
 from patchright.async_api import Browser, Playwright
-from patchright.async_api import Error as PwError
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from .bridge_const import BRIDGE_PORT_END, BRIDGE_PORT_START, EXTENSION_ID
-from .browser_hub import HubError
+from .browser_hub import HubError, PlaywrightError, PwError
 from .cfg import CFG, ENV_BACKEND
 
 logger = logging.getLogger("polaris.bridge_relay")
@@ -65,6 +64,26 @@ def get_or_create_token() -> str:
     return token
 
 
+EXT_SEEN_FILE = "bridge_ext_seen"
+# 扩展 service worker 休眠后由 chrome.alarms 每 30 秒唤醒重连；已配对过的环境需等满一个周期
+PAIRED_EXT_WAIT_S = 35.0
+
+
+def mark_extension_seen() -> None:
+    """记录本机扩展曾成功握手，auto 模式据此决定是否值得多等扩展连接。"""
+    try:
+        (CFG / EXT_SEEN_FILE).touch()
+    except OSError as e:
+        logger.debug("写扩展握手标记失败: %s", e)
+
+
+def extension_wait_s(explicit: bool) -> float:
+    """等待扩展连接的时长：显式 extension 模式 65 秒；auto 模式下已配对过 35 秒，否则 2 秒。"""
+    if explicit:
+        return 65.0
+    return PAIRED_EXT_WAIT_S if (CFG / EXT_SEEN_FILE).exists() else 2.0
+
+
 class BridgeRelay:
     """双口中继服务端：扩展 WebSocket 口 + Playwright CDP 口。"""
 
@@ -89,6 +108,9 @@ class BridgeRelay:
         self.cached_target_info: dict[str, Any] | None = None
 
         self._pending_ext_reqs: dict[int, asyncio.Future[Any]] = {}
+        # 透传给扩展的 CDP 命令：扩展 RPC id -> (Playwright 命令 id, sessionId)。
+        # 应答在扩展读循环里直接回写 Playwright，保证「应答先于其后事件」的 CDP 顺序语义
+        self._pending_forward: dict[int, tuple[int, str | None]] = {}
         self._next_id: int = 1
         self._ext_connected_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -161,6 +183,7 @@ class BridgeRelay:
 
             self.ext_conn = ws
             self._ext_connected_event.set()
+            mark_extension_seen()
             await ws.send(json.dumps({"type": "hello_ok", "client": "browser_use"}))
             logger.info("Polaris Browser Bridge 扩展握手成功 (port=%d)", self.ext_port)
             return True
@@ -226,7 +249,84 @@ class BridgeRelay:
         if mtype == "detached":
             await self._handle_ext_detached()
             return
+        if mtype == "log":
+            self._write_ext_log(msg)
+            return
+        if msg.get("id") in self._pending_forward:
+            await self._handle_forward_response(msg)
+            return
         self._handle_ext_rpc_response(msg)
+
+    async def _handle_forward_response(self, msg: dict[str, Any]) -> None:
+        """在扩展读循环内同步回写 Playwright，确保与随后到达的事件保持原始顺序。"""
+        pw_id, session_id = self._pending_forward.pop(msg["id"])
+        if "error" in msg:
+            err = msg["error"].get("message", "Extension error")
+            await self._reply_pw_error(pw_id, err, session_id=session_id)
+        else:
+            await self._reply_pw(pw_id, msg.get("result") or {}, session_id=session_id)
+
+    async def _forward_cdp(
+        self,
+        pw_id: int,
+        method: str,
+        params: dict[str, Any],
+        reply_session: str | None,
+        child_session: str | None = None,
+    ) -> None:
+        """把 CDP 命令按序写给扩展，不等待应答（应答由读循环回写）。"""
+        if not self.ext_conn:
+            await self._reply_pw_error(
+                pw_id, "扩展连接未就绪或已断开", session_id=reply_session
+            )
+            return
+        ext_id = self._next_ext_id()
+        rpc_params: dict[str, Any] = {
+            "tabId": self.current_tab_id,
+            "method": method,
+            "params": params,
+        }
+        if child_session:
+            rpc_params["sessionId"] = child_session
+        self._pending_forward[ext_id] = (pw_id, reply_session)
+        try:
+            await self.ext_conn.send(
+                json.dumps({"id": ext_id, "method": "cdp", "params": rpc_params})
+            )
+        except (ConnectionClosed, OSError, RuntimeError) as e:
+            self._pending_forward.pop(ext_id, None)
+            await self._reply_pw_error(pw_id, str(e), session_id=reply_session)
+
+    async def _fail_pending_forwards(self, reason: str) -> None:
+        """扩展断开时，给所有在途透传命令回错误，避免 Playwright 无限等待。"""
+        pending = list(self._pending_forward.values())
+        self._pending_forward.clear()
+        for pw_id, session_id in pending:
+            try:
+                await self._reply_pw_error(pw_id, reason, session_id=session_id)
+            except ConnectionClosed, OSError, RuntimeError:
+                pass
+
+    def _write_ext_log(self, msg: dict[str, Any]) -> None:
+        """把扩展回传的日志追加到 CFG/bridge_ext.log（超 1MB 截断），供无界面排障。"""
+        level = str(msg.get("level") or "info")
+        text = str(msg.get("msg") or "")[:2000]
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        line = f"{ts} [{level}] {text}\n"
+        (logger.warning if level == "error" else logger.info)("[ext] %s", text)
+        log_file = CFG / "bridge_ext.log"
+        try:
+            if log_file.exists() and log_file.stat().st_size > 1_000_000:
+                log_file.write_text("", encoding="utf-8")
+            with log_file.open("a", encoding="utf-8") as f:
+                f.write(line)
+        except OSError as e:
+            logger.debug("写扩展日志失败: %s", e)
+
+    async def reload_extension(self, timeout_s: float = 10.0) -> dict[str, Any]:
+        """让已配对的扩展从磁盘重新加载（仅对「加载已解压」安装的开发版有效）。"""
+        res = await self._send_to_extension("reloadExtension", {}, timeout_s=timeout_s)
+        return res if isinstance(res, dict) else {}
 
     def _cleanup_ext_conn(self, ws: ServerConnection) -> None:
         """扩展断开后的清理工作。"""
@@ -257,6 +357,8 @@ class BridgeRelay:
         ) as e:
             logger.debug("扩展连接循环断开: %s", e)
         finally:
+            if self.ext_conn is ws:
+                await self._fail_pending_forwards("扩展连接已断开")
             self._cleanup_ext_conn(ws)
 
     async def _ext_heartbeat(self) -> None:
@@ -266,7 +368,7 @@ class BridgeRelay:
             if self.ext_conn:
                 try:
                     await self.ext_conn.send(json.dumps({"type": "ping"}))
-                except (ConnectionClosed, OSError, RuntimeError):
+                except ConnectionClosed, OSError, RuntimeError:
                     self.ext_conn = None
                     self._ext_connected_event.clear()
                     break
@@ -289,7 +391,8 @@ class BridgeRelay:
 
     def _process_cdp_request(self, conn: ServerConnection, req: Any) -> Any | None:
         """处理 Playwright 发起的 HTTP /json/version 版本探测请求。"""
-        if req.path == "/json/version":
+        # 兼容 Playwright 新版本请求 "/json/version/"（带尾斜杠）及查询串
+        if req.path.split("?", 1)[0].rstrip("/") == "/json/version":
             # 提取 Chrome 版本号
             ver_match = re.search(r"Chrome/([\d.]+)", self.ext_ua)
             ver = ver_match.group(1) if ver_match else "130.0.0.0"
@@ -306,12 +409,16 @@ class BridgeRelay:
         return None
 
     async def _handle_pw_ws(self, ws: ServerConnection) -> None:
-        """处理来自 Playwright 的 CDP 指令流并与扩展交互桥接。"""
+        """处理来自 Playwright 的 CDP 指令流并与扩展交互桥接。
+
+        按接收顺序逐条处理以保持 CDP 顺序语义；透传命令只负责按序写给扩展、
+        不等待应答（应答由扩展读循环回写），因此慢命令不会阻塞后续命令。
+        """
         self.pw_conn = ws
         try:
             async for raw in ws:
                 cmd = json.loads(raw)
-                await self._handle_pw_cmd(cmd)
+                await self._handle_pw_cmd_safe(cmd)
         except (
             ConnectionClosed,
             OSError,
@@ -322,6 +429,30 @@ class BridgeRelay:
         finally:
             if self.pw_conn is ws:
                 self.pw_conn = None
+
+    async def _handle_pw_cmd_safe(self, cmd: dict[str, Any]) -> None:
+        """包装单条命令：异常转为 CDP 错误应答，避免任务内异常被静默吞掉。"""
+        try:
+            await self._handle_pw_cmd(cmd)
+        except asyncio.CancelledError:
+            raise
+        except (
+            HubError,
+            OSError,
+            RuntimeError,
+            KeyError,
+            PwError,
+            PlaywrightError,
+        ) as e:
+            logger.warning("处理 CDP 命令 %s 失败: %s", cmd.get("method"), e)
+            msg_id = cmd.get("id")
+            if isinstance(msg_id, int):
+                try:
+                    await self._reply_pw_error(
+                        msg_id, str(e), session_id=cmd.get("sessionId")
+                    )
+                except ConnectionClosed, OSError, RuntimeError:
+                    pass
 
     async def _handle_pw_cmd(self, cmd: dict[str, Any]) -> None:
         """CDP 命令路由器。"""
@@ -350,8 +481,9 @@ class BridgeRelay:
 
             if method == "Target.setAutoAttach":
                 if self.current_tab_id is None:
+                    # 首次建窗需新开 Chrome 窗口并附着调试器，给足时间
                     tab_res = await self._send_to_extension(
-                        "createTab", {"url": "about:blank"}
+                        "createTab", {"url": "about:blank"}, timeout_s=45.0
                     )
                     self.current_tab_id = tab_res["tabId"]
                     self.cached_target_info = tab_res["targetInfo"]
@@ -389,42 +521,18 @@ class BridgeRelay:
                 return
 
             # 其他浏览器级命令转发给当前标签
-            try:
-                res = await self._send_to_extension(
-                    "cdp",
-                    {"tabId": self.current_tab_id, "method": method, "params": params},
-                )
-                await self._reply_pw(msg_id, res)
-            except (HubError, OSError, RuntimeError, PwError) as e:
-                await self._reply_pw_error(msg_id, str(e))
+            await self._forward_cdp(msg_id, method, params, reply_session=None)
             return
 
         # 2. 标签级命令（sessionId == 'pw-tab-1'）
         if session_id == "pw-tab-1":
-            try:
-                res = await self._send_to_extension(
-                    "cdp",
-                    {"tabId": self.current_tab_id, "method": method, "params": params},
-                )
-                await self._reply_pw(msg_id, res, session_id="pw-tab-1")
-            except (HubError, OSError, RuntimeError, PwError) as e:
-                await self._reply_pw_error(msg_id, str(e), session_id="pw-tab-1")
+            await self._forward_cdp(msg_id, method, params, reply_session="pw-tab-1")
             return
 
         # 3. 子目标命令（如 iframe / worker）
-        try:
-            res = await self._send_to_extension(
-                "cdp",
-                {
-                    "tabId": self.current_tab_id,
-                    "method": method,
-                    "params": params,
-                    "sessionId": session_id,
-                },
-            )
-            await self._reply_pw(msg_id, res, session_id=session_id)
-        except (HubError, OSError, RuntimeError, PwError) as e:
-            await self._reply_pw_error(msg_id, str(e), session_id=session_id)
+        await self._forward_cdp(
+            msg_id, method, params, reply_session=session_id, child_session=session_id
+        )
 
     async def _reply_pw(
         self, msg_id: int, result: Any, session_id: str | None = None
@@ -546,7 +654,7 @@ class ExtensionBackend:
             self.relay = await get_or_start_relay()
 
         explicit = os.environ.get(ENV_BACKEND, "auto").strip().lower() == "extension"
-        wait_s = 30.0 if explicit else 2.0
+        wait_s = extension_wait_s(explicit)
 
         ready = await self.relay.wait_for_extension(timeout=wait_s)
         if not ready:
@@ -557,7 +665,8 @@ class ExtensionBackend:
                 f"未检测到 Polaris Browser Bridge 扩展连接。请在 Chrome 中加载扩展并在选项页粘贴配对令牌:\n{token}\n(令牌已保存于 {token_path})",
             )
 
-        endpoint_url = f"http://127.0.0.1:{self.relay.cdp_port}"
+        # 直接给出 ws 端点，跳过 /json/version 探测，避免不同驱动版本的探测路径差异
+        endpoint_url = f"ws://127.0.0.1:{self.relay.cdp_port}{self.relay.cdp_path}"
         try:
             browser: Any = await pw.chromium.connect_over_cdp(
                 endpoint_url, timeout=30000
@@ -565,7 +674,7 @@ class ExtensionBackend:
             self.browser = browser
             self._bind_disconnect(browser)
             return browser
-        except (PwError, OSError, RuntimeError, TimeoutError) as e:
+        except (PwError, PlaywrightError, OSError, RuntimeError, TimeoutError) as e:
             logger.warning("驱动连接扩展中继失败 (%s)，尝试以备用配置重连", e)
             from playwright.async_api import async_playwright as pw_fallback
 

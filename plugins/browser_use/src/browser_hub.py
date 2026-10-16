@@ -24,6 +24,11 @@ from urllib.parse import urlparse
 
 from patchright.async_api import Browser, Page, Playwright
 from patchright.async_api import Error as PwError
+from playwright.async_api import Error as PlaywrightError
+
+# 两套驱动的异常类互不继承：cdp/extension 默认 playwright、managed 默认 patchright，需同时捕获。
+# except 中请写 (PwError, PlaywrightError, ...)；mypy 不支持在 except 元组里解包 PwError, PlaywrightError
+PW_ERRORS: tuple[type[BaseException], ...] = (PwError, PlaywrightError)
 
 from .cfg import (
     CFG,
@@ -73,30 +78,32 @@ class Backend(Protocol):
         ...
 
 
-def find_devtools_port_file() -> Path | None:
-    """查找日常 Chrome 或 Edge 的 DevToolsActivePort 文件路径。"""
+def devtools_port_candidates() -> list[Path]:
+    """日常 Chrome / Edge 的 DevToolsActivePort 候选路径（按优先级）。"""
     home = Path.home()
     sys_name = platform.system()
     if sys_name == "Darwin":
-        candidates = [
+        return [
             home / "Library/Application Support/Google/Chrome/DevToolsActivePort",
             home / "Library/Application Support/Microsoft Edge/DevToolsActivePort",
         ]
-    elif sys_name == "Windows":
+    if sys_name == "Windows":
         local_app_data = os.environ.get("LOCALAPPDATA")
         base = Path(local_app_data) if local_app_data else (home / "AppData" / "Local")
-        candidates = [
+        return [
             base / "Google/Chrome/User Data/DevToolsActivePort",
             base / "Microsoft/Edge/User Data/DevToolsActivePort",
         ]
-    else:
-        # Linux
-        candidates = [
-            home / ".config/google-chrome/DevToolsActivePort",
-            home / ".config/microsoft-edge/DevToolsActivePort",
-        ]
+    # Linux
+    return [
+        home / ".config/google-chrome/DevToolsActivePort",
+        home / ".config/microsoft-edge/DevToolsActivePort",
+    ]
 
-    for p in candidates:
+
+def find_devtools_port_file() -> Path | None:
+    """查找日常 Chrome 或 Edge 的 DevToolsActivePort 文件路径。"""
+    for p in devtools_port_candidates():
         if p.exists():
             return p
     return None
@@ -124,9 +131,53 @@ def env_cdp_url() -> str | None:
 
 
 PORT_FILE_UNREADABLE_MSG = (
-    "无权读取 Chrome 数据目录中的 DevToolsActivePort（macOS 可能需要授予该进程访问权限），"
-    "请改用 Polaris Browser Bridge 扩展，或设置 POLARIS_BROWSER_CDP_URL"
+    "无权读取 Chrome 数据目录中的 DevToolsActivePort（macOS 隐私保护拦截了跨 App 数据访问："
+    "可在「系统设置 > 隐私与安全性 > 完全磁盘访问权限」中授权启动本进程的 App，如终端 / Claude / Polaris），"
+    "或改用 Polaris Browser Bridge 扩展（无需读取该文件），或设置 POLARIS_BROWSER_CDP_URL"
 )
+PORT_FILE_MISSING_MSG = (
+    "未找到 DevToolsActivePort：日常 Chrome 未运行，或未在 chrome://inspect/#remote-debugging "
+    "打开远程调试开关（打开后 Chrome 才会写出该文件）。也可改用 Polaris Browser Bridge 扩展，"
+    "或设置 POLARIS_BROWSER_CDP_URL"
+)
+PORT_FILE_MALFORMED_MSG = (
+    "DevToolsActivePort 内容无效（Chrome 可能正在启动或已异常退出），请重启 Chrome 后重试，"
+    "或改用 Polaris Browser Bridge 扩展 / 设置 POLARIS_BROWSER_CDP_URL"
+)
+
+
+def diagnose_devtools_port() -> str:
+    """区分「文件不存在 / 无权限 / 内容无效」，返回可操作的错误提示。
+
+    为何需要：Path.exists() 在无权限时同样返回 False，单一提示会把
+    「未开远程调试」误报成「权限问题」，误导排查方向。
+    """
+    for p in devtools_port_candidates():
+        try:
+            p.stat()
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            return f"{PORT_FILE_UNREADABLE_MSG}（{p}）"
+        except OSError:
+            continue
+        try:
+            with p.open("rb"):
+                pass
+        except PermissionError:
+            return f"{PORT_FILE_UNREADABLE_MSG}（{p}）"
+        except OSError:
+            continue
+        return f"{PORT_FILE_MALFORMED_MSG}（{p}）"
+    # 文件 stat 不到时，再看父目录是否可访问，以识别「目录被拦截」的情况
+    for p in devtools_port_candidates():
+        parent = p.parent
+        try:
+            if parent.is_dir() and not os.access(parent, os.R_OK | os.X_OK):
+                return f"{PORT_FILE_UNREADABLE_MSG}（{parent}）"
+        except OSError:
+            return f"{PORT_FILE_UNREADABLE_MSG}（{parent}）"
+    return PORT_FILE_MISSING_MSG
 
 
 def locate_chrome_executable() -> tuple[str | None, str]:
@@ -219,10 +270,20 @@ class CdpToggleBackend:
             p = find_devtools_port_file()
             ws_url = read_devtools_ws_url(p) if p else None
         if not ws_url:
-            raise HubError("attach_failed", PORT_FILE_UNREADABLE_MSG)
+            raise HubError("attach_failed", diagnose_devtools_port())
 
         # 60 秒超时时间供用户在弹窗中点击「允许」
-        browser = await pw.chromium.connect_over_cdp(ws_url, timeout=60000)
+        try:
+            browser = await pw.chromium.connect_over_cdp(ws_url, timeout=60000)
+        except (PwError, PlaywrightError) as err:
+            if "Timeout" not in str(err):
+                raise
+            raise HubError(
+                "attach_failed",
+                "已连上 Chrome 调试端口，但 60 秒内未获授权：请在 Chrome 弹出的"
+                "「允许远程调试」对话框中点击「允许」后重试；"
+                "如需免弹窗，请改用 Polaris Browser Bridge 扩展",
+            ) from err
         self.browser = browser
 
         def on_disconnected(_browser: Any = None) -> None:
@@ -313,7 +374,7 @@ class ManagedBackend:
                 self.browser = browser
                 self._bind_disconnect(browser)
                 return browser
-            except (PwError, OSError) as err:
+            except (PwError, PlaywrightError, OSError) as err:
                 logger.debug("复用已有连接失败: %s", err)
                 try:
                     endpoint_file.unlink()
@@ -416,14 +477,15 @@ async def select_backend() -> tuple[Backend, str]:
     # auto 模式裁决顺序：
     # 1. 尝试 T8b ExtensionBackend 握手（启动中继并等待扩展最多 2 秒）
     try:
-        from .bridge_relay import ExtensionBackend, get_or_start_relay
+        from .bridge_relay import ExtensionBackend, extension_wait_s, get_or_start_relay
 
         relay = await get_or_start_relay()
-        if await relay.wait_for_extension(timeout=2.0):
+        # 已配对过扩展时多等一个唤醒周期，避免扩展休眠导致回落到需要点「允许」的 cdp 后端
+        if await relay.wait_for_extension(timeout=extension_wait_s(explicit=False)):
             ext = ExtensionBackend()
             ext.relay = relay
             return ext, "extension_handshake_ready"
-    except (ImportError, OSError, RuntimeError):
+    except ImportError, OSError, RuntimeError:
         pass
 
     # 2. 检查日常 Chrome DevToolsActivePort
@@ -500,7 +562,13 @@ class BrowserHub:
                 self.idle_release_min = 10
 
         pw_init: Any  # 同上：两套驱动入口函数类型同构，按 Any 处理
-        driver_choice = os.environ.get(ENV_DRIVER, "patchright").strip().lower()
+        # cdp / extension 后端默认用 playwright：patchright 附着日常 Chrome（chrome://inspect 开关模式）时
+        # connect_over_cdp 会在全部命令已应答后仍不返回（2026-10 真机复现），playwright 3~4 秒即连上。
+        # extension 后端经中继转发，patchright 同样会卡死并触发降级重连，统一用 playwright
+        default_driver = (
+            "playwright" if self.backend.name in ("cdp", "extension") else "patchright"
+        )
+        driver_choice = os.environ.get(ENV_DRIVER, default_driver).strip().lower()
         if driver_choice == "playwright":
             from playwright.async_api import async_playwright as pw_init
 
@@ -558,14 +626,9 @@ class BrowserHub:
             and self.browser.contexts[0].pages
         ):
             page = self.browser.contexts[0].pages[0]
-            try:
-                s = await page.context.new_cdp_session(page)
-                info = await s.send("Target.getTargetInfo")
-                await s.detach()
-                tid = info.get("targetInfo", {}).get("targetId", "ext-tab")
-                self.owned_targets.add(tid)
-            except (PwError, OSError, RuntimeError):
-                self.owned_targets.add("ext-tab")
+            # 中继只暴露扩展自建的单个标签，无需再开 CDP 会话查询目标 ID；
+            # 且 chrome.debugger 不允许 Target.attachToBrowserTarget（new_cdp_session 会报 Not allowed）
+            self.owned_targets.add("ext-tab")
             self.has_window = True
             if url != "about:blank":
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -654,7 +717,7 @@ class BrowserHub:
             from .bridge_relay import get_or_create_token
 
             token = get_or_create_token()
-        except (ImportError, OSError):
+        except ImportError, OSError:
             token = ""
         ext_dir = str(Path(__file__).resolve().parent.parent / "extension")
         return {
