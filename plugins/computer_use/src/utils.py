@@ -5,13 +5,23 @@
 
 import json
 import locale as _locale_mod
+import logging
+import os
 import platform
 import subprocess
 import time
-from typing import Optional
 
-from pynput.keyboard import Controller as KeyboardController, Key
-from pynput.mouse import Controller as MouseController, Button
+from pynput.keyboard import Controller as KeyboardController
+from pynput.keyboard import Key
+from pynput.mouse import Button
+from pynput.mouse import Controller as MouseController
+
+logger = logging.getLogger(__name__)
+
+
+class ComputerUseError(RuntimeError):
+    """computer_use 动作失败：参数缺失或非法、目标元素/应用不存在、系统调用失败等。"""
+
 
 mouse = MouseController()
 keyboard = KeyboardController()
@@ -35,11 +45,16 @@ def detect_locale() -> str:
             ).decode()
             if "zh" in out.lower():
                 return "zh"
-        except Exception:
-            pass
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as e:
+            logger.debug("detect_locale: 忽略失败: %s", e)
     try:
         lang = _locale_mod.getlocale()[0] or ""
-    except Exception:
+    except (ValueError, TypeError, IndexError):  # 未知 locale 或返回 None
         lang = ""
     return "zh" if lang.startswith("zh") else "en"
 
@@ -147,7 +162,9 @@ def press_shortcut(shortcut: str):
         for k in keys:
             target = _PYNPUT_KEY_MAP.get(k)
             if target is None and k in _PYNPUT_KEY_MAP:
-                raise Exception(f"Key '{k}' not supported on this OS/pynput version")
+                raise ComputerUseError(
+                    f"Key '{k}' not supported on this OS/pynput version"
+                )
             if target:
                 keyboard.press(target)
                 pressed.append(target)
@@ -155,7 +172,7 @@ def press_shortcut(shortcut: str):
                 keyboard.press(k)
                 pressed.append(k)
             else:
-                raise Exception(f"Unsupported key token: '{k}'")
+                raise ComputerUseError(f"Unsupported key token: '{k}'")
     finally:
         for p in reversed(pressed):
             keyboard.release(p)
@@ -168,16 +185,16 @@ def clipboard_type(text: str):
             prev = subprocess.check_output(["pbpaste"]).decode(
                 "utf-8", errors="replace"
             )
-        except Exception:
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
             prev = ""
         subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
         time.sleep(0.05)
         press_shortcut("cmd+v")
         time.sleep(0.15)
         try:
-            subprocess.run(["pbcopy"], input=prev.encode("utf-8"))
-        except Exception:
-            pass
+            subprocess.run(["pbcopy"], input=prev.encode("utf-8"), check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("clipboard_type: 忽略失败: %s", e)
     else:
         # Windows / Linux: 用 pyperclip，保存并恢复原剪贴板
         try:
@@ -191,8 +208,8 @@ def clipboard_type(text: str):
             time.sleep(0.15)
             try:
                 pyperclip.copy(prev)
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001 — 第三方原生库（.copy）异常类型不固定
+                logger.debug("clipboard_type: 忽略失败: %s", e)
         except ImportError:
             # pyperclip 未安装时降级
             keyboard.type(text)
@@ -238,11 +255,11 @@ def osa_send_key(proc_name: str, shortcut: str) -> bool:
     try:
         return (
             subprocess.run(
-                ["osascript", "-e", script], capture_output=True, timeout=5
+                ["osascript", "-e", script], capture_output=True, timeout=5, check=False
             ).returncode
             == 0
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -252,7 +269,7 @@ def osa_paste(proc_name: str, text: str) -> bool:
         subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True, timeout=3)
         time.sleep(0.08)
         return osa_send_key(proc_name, "cmd+v")
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -285,7 +302,8 @@ def ensure_frontmost(
     if target == "desktop":
         if plat == "Darwin":
             subprocess.run(
-                ["osascript", "-e", 'tell application "System Events" to key code 103']
+                ["osascript", "-e", 'tell application "System Events" to key code 103'],
+                check=False,
             )
         elif plat == "Windows":
             subprocess.run(
@@ -293,10 +311,11 @@ def ensure_frontmost(
                     "powershell",
                     "-command",
                     "(New-Object -ComObject shell.application).toggleDesktop()",
-                ]
+                ],
+                check=False,
             )
         else:
-            subprocess.run(["wmctrl", "-k", "on"])
+            subprocess.run(["wmctrl", "-k", "on"], check=False)
         return True
 
     # Regular app focusing is currently macOS only
@@ -309,12 +328,15 @@ def ensure_frontmost(
             return True
         if attempt < retries:
             if bundle_id:
-                subprocess.run(["open", "-b", bundle_id], capture_output=True)
+                subprocess.run(
+                    ["open", "-b", bundle_id], capture_output=True, check=False
+                )
             else:
                 js_open = json.dumps(open_name)
                 subprocess.run(
                     ["osascript", "-e", f"tell application {js_open} to activate"],
                     capture_output=True,
+                    check=False,
                 )
             # Force frontmost via System Events if bundleId can be resolved
             js_open = json.dumps(open_name)
@@ -330,7 +352,9 @@ def ensure_frontmost(
             }} catch(e) {{}}
             """
             subprocess.run(
-                ["osascript", "-l", "JavaScript", "-e", jxa], capture_output=True
+                ["osascript", "-l", "JavaScript", "-e", jxa],
+                capture_output=True,
+                check=False,
             )
             time.sleep(0.8)
     return False
@@ -357,8 +381,8 @@ def restore_focus_if_needed():
                 if app_name and platform.system() == "Darwin":
                     ensure_frontmost(app_name, app_name)
                     time.sleep(0.3)
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
+            logger.debug("restore_focus_if_needed: 忽略失败: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +434,8 @@ def get_largest_window_bounds(proc_name: str) -> dict:
         )
         if out and out != "null":
             return json.loads(out)
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError) as e:
+        logger.debug("get_largest_window_bounds: 忽略失败: %s", e)
     return {}
 
 
@@ -468,7 +492,7 @@ def get_window_id_for_process(proc_name: str) -> dict:
                     "h": wh,
                 }
         return best or {}
-    except Exception:
+    except Exception:  # noqa: BLE001 — 第三方原生库（.CGWindowListCopyWindowInfo）异常类型不固定
         return {}
 
 
@@ -491,21 +515,24 @@ def capture_window_by_id(wid: int, x_off: int, y_off: int) -> tuple:
     """
     import tempfile as _tf
 
-    tmp = _tf.NamedTemporaryFile(suffix=".png", delete=False).name
+    # mkstemp 后立即关闭句柄：NamedTemporaryFile(...).name 会泄漏打开的文件描述符
+    fd, tmp = _tf.mkstemp(suffix=".png")
+    os.close(fd)
     try:
         subprocess.run(
             ["screencapture", "-l", str(wid), "-o", tmp],
             capture_output=True,
             timeout=10,
+            check=False,
         )
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("capture_window_by_id: 忽略失败: %s", e)
     return tmp, x_off, y_off
 
 
 def get_screenshot_dir() -> str:
-    import tempfile
     import os
+    import tempfile
 
     d = os.path.join(tempfile.gettempdir(), "polaris_computer_use_screenshots")
     os.makedirs(d, exist_ok=True)
@@ -513,19 +540,19 @@ def get_screenshot_dir() -> str:
 
 
 def clean_screenshot_dir():
-    import os
     import glob
+    import os
 
     d = get_screenshot_dir()
     for f in glob.glob(os.path.join(d, "*.png")):
         try:
             os.remove(f)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("clean_screenshot_dir: 忽略失败: %s", e)
 
 
 def capture_screen(
-    app_name: str = "", bounds: Optional[dict] = None
+    app_name: str = "", bounds: dict | None = None
 ) -> tuple[str, int, int]:
     """
     大一统截图入口函数。
@@ -535,13 +562,13 @@ def capture_screen(
 
     返回 (临时图片路径, x轴偏移量, y轴偏移量)。
     """
-    import mss as _mss
-    import mss.tools as _mss_tools
     import tempfile as _tf
 
-    tmp = _tf.NamedTemporaryFile(
-        suffix=".png", dir=get_screenshot_dir(), delete=False
-    ).name
+    import mss as _mss
+    import mss.tools as _mss_tools
+
+    fd, tmp = _tf.mkstemp(suffix=".png", dir=get_screenshot_dir())
+    os.close(fd)
 
     if not bounds and app_name:
         bounds = get_largest_window_bounds(app_name)
@@ -558,8 +585,8 @@ def capture_screen(
                 img = sct.grab(region)
                 _mss_tools.to_png(img.rgb, img.size, output=tmp)
             return tmp, int(bounds["x"]), int(bounds["y"])
-        except Exception:
-            pass  # fall through to full-screen
+        except Exception as e:  # noqa: BLE001 — 第三方原生库（.MSS, .grab, .to_png）异常类型不固定
+            logger.debug("capture_screen: 忽略失败: %s", e)
 
     # Full-screen fallback — 使用当前活跃显示器
     try:
@@ -576,8 +603,8 @@ def capture_screen(
                 img = sct.grab(m)
                 _mss_tools.to_png(img.rgb, img.size, output=tmp)
                 return tmp, m["left"], m["top"]
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001 — 第三方原生库（.MSS, .grab, .shot, .to_png）异常类型不固定
+        logger.debug("capture_screen: 忽略失败: %s", e)
     return tmp, 0, 0
 
 
@@ -588,9 +615,10 @@ def safe_click(
     安全点击：先把目标 App 拽到最前面，然后再对绝对坐标 (x, y) 触发左键点击。
     如果在 Mac 上无法把 App 拽到前面，则果断放弃点击，防止误伤其他软件。
     """
-    if platform.system() == "Darwin":
-        if not ensure_frontmost(proc_name, open_name, bundle_id):
-            return False
+    if platform.system() == "Darwin" and not ensure_frontmost(
+        proc_name, open_name, bundle_id
+    ):
+        return False
     mouse.position = (x, y)
     mouse.click(Button.left)
     return True
@@ -610,7 +638,7 @@ def get_frontmost_app_name() -> str:
             .decode()
             .strip()
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
         return ""
 
 
@@ -638,8 +666,8 @@ def get_frontmost_window_bounds() -> dict:
         )
         if out and out != "null":
             return json.loads(out)
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError) as e:
+        logger.debug("get_frontmost_window_bounds: 忽略失败: %s", e)
     return {}
 
 
@@ -672,8 +700,8 @@ def get_process_window_bounds(proc_name: str) -> dict:
         )
         if out and out != "null":
             return json.loads(out)
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError) as e:
+        logger.debug("get_process_window_bounds: 忽略失败: %s", e)
     return {}
 
 
@@ -721,15 +749,16 @@ def find_input_field(role_hint: str = "AXTextArea"):
         if out and out != "null":
             c = json.loads(out)
             return c["x"], c["y"]
-    except Exception:
-        pass
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        UnicodeDecodeError,
+        ValueError,
+        IndexError,
+        KeyError,
+    ) as e:
+        logger.debug("find_input_field: 忽略失败: %s", e)
     return None
-
-
-
-
-
-
 
 
 def compile_swift_binary(src_path: str, out_path: str, timeout: int = 60) -> bool:
@@ -755,12 +784,13 @@ def compile_swift_binary(src_path: str, out_path: str, timeout: int = 60) -> boo
                 ["swiftc", src_path, "-o", out_path],
                 capture_output=True,
                 timeout=timeout,
+                check=False,
             )
             return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     finally:
         try:
             os.remove(lock_path)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("compile_swift_binary: 忽略失败: %s", e)

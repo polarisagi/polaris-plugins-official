@@ -4,18 +4,21 @@ Polaris System Info MCP Server
 Provides environmental context (OS, locale, timezone, installed apps) to the AI Agent.
 """
 
-import sys
 import json
+import logging
 import os
 import platform
 import shutil
+import sys
+
+logger = logging.getLogger(__name__)
 
 
 def handle_check_app_installed(args):
     """Check if an application exists in standard OS installation paths."""
     app_name = args.get("app_name", "").strip()
     if not app_name:
-        raise Exception("Missing 'app_name' parameter")
+        raise ValueError("Missing 'app_name' parameter")
 
     plat = platform.system()
     app_name_lower = app_name.lower()
@@ -34,8 +37,8 @@ def handle_check_app_installed(args):
                 for item in os.listdir(base):
                     if item.endswith(".app") and app_name_lower in item.lower():
                         results.append(os.path.join(base, item))
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("handle_check_app_installed: 忽略失败: %s", e)
 
     elif plat == "Windows":
         bases = [
@@ -50,8 +53,8 @@ def handle_check_app_installed(args):
                 for item in os.listdir(base):
                     if app_name_lower in item.lower():
                         results.append(os.path.join(base, item))
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("handle_check_app_installed: 忽略失败: %s", e)
 
     elif plat == "Linux":
         path = shutil.which(app_name_lower)
@@ -117,7 +120,7 @@ def main():
             continue
         try:
             req = json.loads(line)
-        except Exception:
+        except ValueError:
             _send_error(None, -32700, "Parse error")
             continue
 
@@ -156,7 +159,7 @@ def main():
             else:
                 if req_id is not None:
                     _send_error(req_id, -32601, "Method not found")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
             _send_error(req_id, -32603, str(e))
 
 

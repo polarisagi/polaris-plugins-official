@@ -30,15 +30,12 @@ Selection strategy (in order):
   C  Keyboard Down+Enter on inline suggestions (safe last resort)
 """
 
-import json
 import os
-import subprocess
 import time
 
-
-from adapters.base import BaseAdapter
 import utils
 
+from adapters.base import BaseAdapter
 
 # Locale-aware sections WeChat may show in search results, tried in order.
 # 联系人 (Contacts) is tried first because direct contacts are the most common target.
@@ -102,8 +99,8 @@ class WeChatAdapter(BaseAdapter):
             sections = [section] + [s for s in default_sections if s != section]
         else:
             sections = default_sections
-            
-        # Filter sections based on contact_type to avoid clicking a contact 
+
+        # Filter sections based on contact_type to avoid clicking a contact
         # when a group was requested (or vice-versa) if they share the same name.
         if contact_type == "contact":
             sections = [s for s in sections if s not in ("群聊", "Group Chats")]
@@ -114,36 +111,44 @@ class WeChatAdapter(BaseAdapter):
         bundle_id = profile.get("bundle_id", "")
 
         # ── Strategy A: Screenshot + OCR (tries all sections, then no-section) ──
-        ocr_result = self._find_via_ocr(contact_name, sections, proc_name, profile, log, contact_type)
+        ocr_result = self._find_via_ocr(
+            contact_name, sections, proc_name, profile, log, contact_type
+        )
         if ocr_result:
             abs_x, abs_y, target_global_idx = ocr_result
-            
+
             # The user correctly observed that the search dropdown disappears during OCR on their system.
             # We MUST retype the search to restore the UI state before clicking or keyboard navigating.
             log("[4A] OCR identified target, retyping search to restore UI state")
-            self._retype_search(contact_name, profile, proc_name, open_name, bundle_id, log)
-            
+            self._retype_search(
+                contact_name, profile, proc_name, open_name, bundle_id, log
+            )
+
             # The user requested to keep both methods with an if-else.
             # Keyboard navigation is preferred because it's native and safe from OS security quirks.
             use_mouse = str(profile.get("use_mouse_click", "true")).lower() == "true"
-            
+
             if use_mouse:
                 log(f"[4A] WeChat OCR: direct-clicked at ({abs_x}, {abs_y})")
                 _direct_click(abs_x, abs_y)
             else:
                 log("[4A] OCR identified target, navigating via keyboard")
-                from pynput.keyboard import Controller as KBCtrl, Key
-                log(f"[4A] WeChat OCR: target is at GLOBAL index {target_global_idx}, navigating via keyboard")
-                
+                from pynput.keyboard import Controller as KBCtrl
+                from pynput.keyboard import Key
+
+                log(
+                    f"[4A] WeChat OCR: target is at GLOBAL index {target_global_idx}, navigating via keyboard"
+                )
+
                 kb = KBCtrl()
                 for _ in range(target_global_idx):
                     kb.tap(Key.down)
                     time.sleep(0.1)
                 kb.tap(Key.enter)
-            
+
             # Give WeChat time to switch chat view
             time.sleep(1.0)
-            
+
             return True
 
         # ── Strategy B: Accessibility tree across all NSWindows (single JXA call) ─
@@ -181,7 +186,8 @@ class WeChatAdapter(BaseAdapter):
         """
         Re-open WeChat's search box and retype the query using clipboard_type.
         """
-        from pynput.keyboard import Controller as _KBCtrl, Key as _Key
+        from pynput.keyboard import Controller as _KBCtrl
+        from pynput.keyboard import Key as _Key
 
         utils.ensure_frontmost(proc_name, open_name, bundle_id)
         kb = _KBCtrl()
@@ -219,10 +225,8 @@ class WeChatAdapter(BaseAdapter):
         log,
         contact_type: str = "any",
     ) -> tuple[int, int, int] | None:
-        bounds = profile.get("_window_bounds")
         log("[4A] mss 屏幕区域截图中...")
         tmp, x_off, y_off = _screenshot_window(profile)
-
 
         try:
             if not tmp or not os.path.exists(tmp):
@@ -235,133 +239,164 @@ class WeChatAdapter(BaseAdapter):
             if not all_text_blocks:
                 log("[4A] OCR: no text found or execution failed")
                 return None
-                
-            KNOWN_HEADERS = [
-                "最常使用", "联系人", "群聊", "聊天记录", "收藏", "功能", 
-                "小程序", "公众号", "更多", "搜一搜", "搜索网络结果"
-            ]
 
-            present_headers = []
-            for b in all_text_blocks:
-                t = b["text"].strip()
-                # Use substring match to tolerate OCR noise (e.g., "联系人.")
-                # Enforce left-alignment (x < 110) to avoid matching chat messages
-                # Enforce length check to avoid matching long subtitles that happen to contain the header word
-                matched_header = None
-                for h in KNOWN_HEADERS:
-                    if h in t and len(t) <= len(h) + 4:
-                        matched_header = h
-                        break
-                
-                if matched_header and b["min_x"] < 110:
-                    b["text"] = matched_header  # normalize
-                    present_headers.append(b)
-            
-            present_headers.sort(key=lambda b: b["mid_y"])
-            
-            header_boundaries = {}
-            for i in range(len(present_headers)):
-                h = present_headers[i]
-                start_y = h["mid_y"]
-                end_y = present_headers[i+1]["mid_y"] if i + 1 < len(present_headers) else float('inf')
-                header_boundaries[h["text"].strip()] = (start_y, end_y, h["min_x"])
-
-            contact_hits = [b for b in all_text_blocks if b["text"].replace(" ", "") == contact_name.replace(" ", "")]
-            
-            candidates = []
-            for hit in contact_hits:
-                hy = hit["mid_y"]
-                assigned_section = None
-                for h_text, (start_y, end_y, h_min_x) in header_boundaries.items():
-                    if start_y + 15 < hy < end_y:
-                        if hit["min_x"] < h_min_x + 100:
-                            assigned_section = h_text
-                            break
-                if assigned_section:
-                    candidates.append({"hit": hit, "section": assigned_section})
-
-            valid_sections = ["最常使用", "联系人", "群聊"]
-            candidates = [c for c in candidates if c["section"] in valid_sections]
-            
+            boundaries = _section_boundaries(_detect_headers(all_text_blocks))
+            candidates = _assign_sections(all_text_blocks, contact_name, boundaries)
             if not candidates:
                 log("[4A] OCR: no valid candidates found in targeted sections")
                 return None
-                
-            chosen_hit = None
-            log_reason = ""
-            
-            if contact_type == "contact":
-                contact_sec_hits = [c["hit"] for c in candidates if c["section"] == "联系人"]
-                if contact_sec_hits:
-                    chosen_hit = contact_sec_hits[0]
-                    log_reason = "exact match in '联系人'"
-                else:
-                    recent_hits = [c["hit"] for c in candidates if c["section"] == "最常使用"]
-                    recent_hits.sort(key=lambda b: b["mid_y"])
-                    if len(recent_hits) >= 2:
-                        chosen_hit = recent_hits[0]
-                        log_reason = "1st match in '最常使用'"
-                    elif len(recent_hits) == 1:
-                        chosen_hit = recent_hits[0]
-                        log_reason = "only match in '最常使用'"
-                        
-            elif contact_type == "group":
-                group_sec_hits = [c["hit"] for c in candidates if c["section"] == "群聊"]
-                if group_sec_hits:
-                    chosen_hit = group_sec_hits[0]
-                    log_reason = "exact match in '群聊'"
-                else:
-                    recent_hits = [c["hit"] for c in candidates if c["section"] == "最常使用"]
-                    recent_hits.sort(key=lambda b: b["mid_y"])
-                    if len(recent_hits) >= 2:
-                        chosen_hit = recent_hits[1]
-                        log_reason = "2nd match in '最常使用'"
-                    elif len(recent_hits) == 1:
-                        chosen_hit = recent_hits[0]
-                        log_reason = "only match in '最常使用'"
-                        
-            if not chosen_hit:
-                chosen_hit = candidates[0]["hit"]
-                log_reason = "fallback to first valid candidate"
 
+            chosen_hit, log_reason = _choose_hit(candidates, contact_type)
             abs_x = int(chosen_hit["mid_x"]) + x_off
             abs_y = int(chosen_hit["mid_y"]) + y_off
-            
-            sec_min_x = header_boundaries.get("最常使用", (0, 0, 0))[2] if "最常使用" in header_boundaries else 0
-            blocks_above = [b for b in all_text_blocks if 50 < b["mid_y"] <= chosen_hit["mid_y"] + 10]
-            blocks_above.sort(key=lambda b: b["mid_y"])
-            
-            rows = []
-            curr_row = []
-            for b in blocks_above:
-                if not curr_row:
-                    curr_row.append(b)
-                else:
-                    if abs(b["mid_y"] - curr_row[0]["mid_y"]) < 20:
-                        curr_row.append(b)
-                    else:
-                        rows.append(curr_row)
-                        curr_row = [b]
-            if curr_row:
-                rows.append(curr_row)
-                
-            valid_row_count = 0
-            for row in rows:
-                is_header = any(any(h == b["text"].strip() for h in KNOWN_HEADERS) for b in row)
-                is_subtitle = all(b["min_x"] > sec_min_x + 50 for b in row) if sec_min_x else False
-                if not is_header and not is_subtitle:
-                    valid_row_count += 1
-                    
-            target_global_idx = max(0, valid_row_count - 1)
-            
-            log(f"[4A] OCR logic: selected '{contact_name}' via {log_reason} → global_index {target_global_idx}")
+            target_global_idx = _global_index(all_text_blocks, chosen_hit, boundaries)
+
+            log(
+                f"[4A] OCR logic: selected '{contact_name}' via {log_reason} → global_index {target_global_idx}"
+            )
             return (abs_x, abs_y, target_global_idx)
 
         finally:
             if tmp and os.path.exists(tmp):
                 os.remove(tmp)
 
-    
+
+# ---------------------------------------------------------------------------
+# OCR 搜索结果解析（纯函数，便于单独验证）
+# ---------------------------------------------------------------------------
+
+# 微信搜索下拉框中的分组标题
+_KNOWN_HEADERS = [
+    "最常使用",
+    "联系人",
+    "群聊",
+    "聊天记录",
+    "收藏",
+    "功能",
+    "小程序",
+    "公众号",
+    "更多",
+    "搜一搜",
+    "搜索网络结果",
+]
+# 只有这些分组里的命中才可能是要找的会话
+_VALID_SECTIONS = ["最常使用", "联系人", "群聊"]
+
+
+def _detect_headers(blocks: list[dict]) -> list[dict]:
+    """找出分组标题块（会把块文本规范化为标准标题），按纵坐标排序返回。
+
+    子串匹配容忍 OCR 噪声（如「联系人.」）；要求左对齐（x < 110）以排除聊天内容，
+    并限制长度，避免误匹配恰好包含标题词的长副标题。
+    """
+    present = []
+    for b in blocks:
+        t = b["text"].strip()
+        matched = next(
+            (h for h in _KNOWN_HEADERS if h in t and len(t) <= len(h) + 4), None
+        )
+        if matched and b["min_x"] < 110:
+            b["text"] = matched
+            present.append(b)
+    present.sort(key=lambda b: b["mid_y"])
+    return present
+
+
+def _section_boundaries(headers: list[dict]) -> dict[str, tuple]:
+    """每个分组的 (起始 y, 结束 y, 标题 min_x)；结束 y 为下一个标题的 y 或无穷大。"""
+    out: dict[str, tuple] = {}
+    for i, h in enumerate(headers):
+        end_y = headers[i + 1]["mid_y"] if i + 1 < len(headers) else float("inf")
+        out[h["text"].strip()] = (h["mid_y"], end_y, h["min_x"])
+    return out
+
+
+def _assign_sections(
+    blocks: list[dict], contact_name: str, boundaries: dict[str, tuple]
+) -> list[dict]:
+    """把与联系人名完全匹配的文本块归入所在分组，只保留有效分组中的候选。"""
+    target = contact_name.replace(" ", "")
+    candidates = []
+    for hit in blocks:
+        if hit["text"].replace(" ", "") != target:
+            continue
+        hy = hit["mid_y"]
+        section = next(
+            (
+                name
+                for name, (start_y, end_y, h_min_x) in boundaries.items()
+                if start_y + 15 < hy < end_y and hit["min_x"] < h_min_x + 100
+            ),
+            None,
+        )
+        if section:
+            candidates.append({"hit": hit, "section": section})
+    return [c for c in candidates if c["section"] in _VALID_SECTIONS]
+
+
+def _pick_from_recent(candidates: list[dict], want_second: bool) -> tuple:
+    """从「最常使用」分组按纵坐标取命中：群聊取第 2 个，联系人取第 1 个。"""
+    recent = sorted(
+        (c["hit"] for c in candidates if c["section"] == "最常使用"),
+        key=lambda b: b["mid_y"],
+    )
+    if len(recent) >= 2:
+        if want_second:
+            return recent[1], "2nd match in '最常使用'"
+        return recent[0], "1st match in '最常使用'"
+    if len(recent) == 1:
+        return recent[0], "only match in '最常使用'"
+    return None, ""
+
+
+def _choose_hit(candidates: list[dict], contact_type: str) -> tuple[dict, str]:
+    """按会话类型挑选命中：优先对应分组，其次「最常使用」，最后退回第一个有效候选。"""
+    chosen, reason = None, ""
+    if contact_type in ("contact", "group"):
+        section = "联系人" if contact_type == "contact" else "群聊"
+        exact = [c["hit"] for c in candidates if c["section"] == section]
+        if exact:
+            chosen, reason = exact[0], f"exact match in '{section}'"
+        else:
+            chosen, reason = _pick_from_recent(
+                candidates, want_second=contact_type == "group"
+            )
+    if not chosen:
+        chosen, reason = candidates[0]["hit"], "fallback to first valid candidate"
+    return chosen, reason
+
+
+def _group_rows(blocks: list[dict]) -> list[list[dict]]:
+    """把已按 y 排序的文本块按行聚合（与行首块 y 差 < 20 视为同一行）。"""
+    rows: list[list[dict]] = []
+    curr: list[dict] = []
+    for b in blocks:
+        if curr and abs(b["mid_y"] - curr[0]["mid_y"]) >= 20:
+            rows.append(curr)
+            curr = []
+        curr.append(b)
+    if curr:
+        rows.append(curr)
+    return rows
+
+
+def _global_index(
+    blocks: list[dict], chosen_hit: dict, boundaries: dict[str, tuple]
+) -> int:
+    """命中项在整个下拉列表中的全局序号：统计其上方（含自身）非标题、非副标题的行数。"""
+    sec_min_x = boundaries["最常使用"][2] if "最常使用" in boundaries else 0
+    above = sorted(
+        (b for b in blocks if 50 < b["mid_y"] <= chosen_hit["mid_y"] + 10),
+        key=lambda b: b["mid_y"],
+    )
+    count = 0
+    for row in _group_rows(above):
+        is_header = any(b["text"].strip() in _KNOWN_HEADERS for b in row)
+        is_subtitle = bool(sec_min_x) and all(b["min_x"] > sec_min_x + 50 for b in row)
+        if not is_header and not is_subtitle:
+            count += 1
+    return max(0, count - 1)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -389,7 +424,8 @@ def _direct_click(x: int, y: int) -> None:
     results before the click lands.  Using pynput directly avoids all subprocess
     spawning and keeps the current focus owner unchanged.
     """
-    from pynput.mouse import Controller as _MC, Button as _Btn
+    from pynput.mouse import Button as _Btn
+    from pynput.mouse import Controller as _MC
 
     m = _MC()
     m.position = (x, y)

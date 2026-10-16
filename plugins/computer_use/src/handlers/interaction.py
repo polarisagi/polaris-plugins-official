@@ -1,35 +1,39 @@
-import os
 import json
-import subprocess
-import time
+import logging
+import os
 import platform
 import tempfile
-import utils
-from utils import mouse, Button
+import time
 
 import mss
+import utils
+from utils import Button, ComputerUseError, mouse
+
+logger = logging.getLogger(__name__)
 
 
 def handle_click_element_by_id(args):
     element_id = str(args.get("id"))
     if not element_id:
-        raise Exception("Missing id parameter")
+        raise ComputerUseError("Missing id parameter")
 
     state_file = os.path.join(tempfile.gettempdir(), "computer_use_state.json")
     if not os.path.exists(state_file):
-        raise Exception("No screen state found. Call get_screen_state first.")
+        raise ComputerUseError("No screen state found. Call get_screen_state first.")
 
     try:
         with open(state_file, "r") as f:
             state_data = json.load(f)
-    except Exception as e:
-        raise Exception(f"Failed to read screen state: {e}")
+    except (OSError, ValueError) as e:
+        raise ComputerUseError(f"Failed to read screen state: {e}")
 
     app_name = state_data.get("metadata", {}).get("app_name")
     id_map = state_data.get("elements", {})
 
     if element_id not in id_map:
-        raise Exception(f"Element ID {element_id} not found in current screen state.")
+        raise ComputerUseError(
+            f"Element ID {element_id} not found in current screen state."
+        )
 
     target = id_map[element_id]
 
@@ -50,7 +54,7 @@ def handle_click_element_by_id(args):
 def _click_by_ocr(elem_name: str, match_index: int) -> tuple[int, int]:
     """Find element via Swift OCR fallback. Returns (x, y) or raises."""
     import ocr
-    
+
     tmp_path = os.path.join(
         tempfile.gettempdir(), f"ocr_temp_{os.urandom(4).hex()}.png"
     )
@@ -63,12 +67,14 @@ def _click_by_ocr(elem_name: str, match_index: int) -> tuple[int, int]:
             os.remove(filename)
 
     if not all_text_blocks:
-        raise Exception(f"Element '{elem_name}' not found (OCR failed or no text)")
-        
+        raise ComputerUseError(
+            f"Element '{elem_name}' not found (OCR failed or no text)"
+        )
+
     matches = [b for b in all_text_blocks if elem_name in b["text"]]
     if not matches:
-        raise Exception(f"Element '{elem_name}' not found on screen")
-        
+        raise ComputerUseError(f"Element '{elem_name}' not found on screen")
+
     # matches are already sorted top-to-bottom by describe_screen.swift
     idx = match_index if match_index >= 0 else max(0, len(matches) + match_index)
     match = matches[min(idx, len(matches) - 1)]
@@ -87,7 +93,7 @@ def _click_windows(elem_name: str, match_index: int) -> tuple[int, int]:
     win = Desktop(backend="uia").windows(visible_only=True)[0]
     matches = [c for c in win.descendants() if elem_name in c.window_text()]
     if not matches:
-        raise Exception(f"Element '{elem_name}' not found")
+        raise ComputerUseError(f"Element '{elem_name}' not found")
     idx = match_index if match_index >= 0 else max(0, len(matches) + match_index)
     pt = matches[min(idx, len(matches) - 1)].rectangle().mid_point()
     return pt.x, pt.y
@@ -107,7 +113,7 @@ def _click_linux(elem_name: str, match_index: int) -> tuple[int, int]:
         if active_win:
             break
     if not active_win:
-        raise Exception("No active window")
+        raise ComputerUseError("No active window")
 
     matches: list[tuple[int, int]] = []
 
@@ -119,14 +125,14 @@ def _click_linux(elem_name: str, match_index: int) -> tuple[int, int]:
                 ext = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
                 if ext.width > 0:
                     matches.append((ext.x + ext.width // 2, ext.y + ext.height // 2))
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — 第三方原生库（.getExtents, .queryComponent）异常类型不固定
+            logger.debug("_traverse: 忽略失败: %s", e)
         for child in node:
             _traverse(child, depth + 1)
 
     _traverse(active_win, 0)
     if not matches:
-        raise Exception(f"Element '{elem_name}' not found")
+        raise ComputerUseError(f"Element '{elem_name}' not found")
     idx = match_index if match_index >= 0 else max(0, len(matches) + match_index)
     return matches[min(idx, len(matches) - 1)]
 
@@ -135,7 +141,7 @@ def handle_click_element_by_name(args):
     elem_name = args.get("element_name") or args.get("text")
     match_index = int(args.get("index", 0))
     if not elem_name:
-        raise Exception("Missing element_name")
+        raise ComputerUseError("Missing element_name")
 
     plat = platform.system()
     if plat == "Darwin":
@@ -168,8 +174,8 @@ def handle_focus_input(args):
             with open(state_file, "r") as f:
                 state_data = json.load(f)
                 app_name = state_data.get("metadata", {}).get("app_name")
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logger.debug("handle_focus_input: 忽略失败: %s", e)
 
     if plat == "Darwin":
         if app_name:

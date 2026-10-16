@@ -1,5 +1,5 @@
 import utils
-from utils import mouse, Button
+from utils import Button, mouse
 
 
 def _has_coords(args) -> bool:

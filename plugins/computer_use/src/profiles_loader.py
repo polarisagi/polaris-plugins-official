@@ -1,8 +1,11 @@
-from typing import Optional
-import json
 import glob
+import json
+import logging
 import os
+
 import utils
+
+logger = logging.getLogger(__name__)
 
 _PROFILES_DIR = os.path.join(os.path.dirname(__file__), "profiles")
 
@@ -13,7 +16,8 @@ def _load_profiles() -> dict:
         try:
             with open(path, encoding="utf-8") as f:
                 p = json.load(f)
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("_load_profiles: 忽略失败: %s", e)
             continue
         keys = set()
         for field in ("app_name", "open_name"):
@@ -33,7 +37,7 @@ APP_PROFILES: dict = _load_profiles()
 SYSTEM_LOCALE: str = utils.detect_locale()
 
 
-def resolve(value, loc: Optional[str] = None):
+def resolve(value, loc: str | None = None):
     """Resolve a profile field that may be a locale map {"zh": …, "en": …}."""
     if value is None:
         return None

@@ -13,46 +13,50 @@ Architecture:
   main.py           — MCP server + action routing
 """
 
-import sys
 import json
+import logging
+import sys
 
-from schema import TOOL_SCHEMAS
 from handlers import (
-    handle_screenshot,
-    handle_get_screen_state,
-    handle_get_ui_tree,
-    handle_get_screen_info,
-    handle_open_app,
-    handle_get_running_apps,
-    handle_send_message_to,
-    handle_get_window_list,
-    handle_close_window,
-    handle_minimize_app,
-    handle_quit_app,
-    handle_send_file_to,
+    handle_clear_and_type,
     handle_click_element_by_id,
     handle_click_element_by_name,
-    handle_focus_input,
-    handle_left_click,
-    handle_right_click,
+    handle_close_window,
+    handle_computer_batch,
+    handle_cursor_position,
     handle_double_click,
-    handle_mouse_move,
-    handle_scroll,
+    handle_focus_input,
+    handle_get_running_apps,
+    handle_get_screen_info,
+    handle_get_screen_state,
+    handle_get_ui_tree,
+    handle_get_window_list,
+    handle_hold_key,
+    handle_key,
+    handle_left_click,
     handle_left_click_drag,
     handle_middle_click,
-    handle_triple_click,
-    handle_cursor_position,
-    handle_type,
-    handle_key,
-    handle_clear_and_type,
-    handle_hold_key,
-    handle_wait,
+    handle_minimize_app,
+    handle_mouse_move,
+    handle_open_app,
+    handle_quit_app,
     handle_read_clipboard,
+    handle_read_messages_from,
+    handle_right_click,
+    handle_screenshot,
+    handle_scroll,
+    handle_send_file_to,
+    handle_send_message_to,
+    handle_triple_click,
+    handle_type,
+    handle_wait,
     handle_write_clipboard,
     handle_zoom,
-    handle_read_messages_from,
-    handle_computer_batch,
 )
+from schema import TOOL_SCHEMAS
+from utils import ComputerUseError
+
+logger = logging.getLogger(__name__)
 
 
 def check_app_permission(app_name):
@@ -75,14 +79,14 @@ def check_app_permission(app_name):
         try:
             with open(config_path, "w") as f:
                 json.dump(default_config, f, indent=2)
-        except Exception:
-            pass
+        except (OSError, TypeError) as e:
+            logger.debug("check_app_permission: 忽略失败: %s", e)
         config = default_config
     else:
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
-        except Exception:
+        except (OSError, ValueError):
             config = default_config
 
     app_lower = app_name.lower()
@@ -153,7 +157,7 @@ def handle_computer(args):
 
     handler = _ACTION_DISPATCH.get(action)
     if handler is None:
-        raise Exception(f"Unknown action: '{action}'")
+        raise ComputerUseError(f"Unknown action: '{action}'")
     return handler(args)
 
 
@@ -184,8 +188,8 @@ def _clear_state_file():
     if os.path.exists(sf):
         try:
             os.remove(sf)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("_clear_state_file: 忽略失败: %s", e)
 
 
 def _inject_routing_hint(action, app_name, result):
@@ -248,7 +252,7 @@ def main():
             continue
         try:
             req = json.loads(line)
-        except Exception:
+        except ValueError:
             _send_error(None, -32700, "Parse error")
             continue
 
@@ -279,7 +283,7 @@ def main():
             else:
                 if req_id is not None:
                     _send_error(req_id, -32601, "Method not found")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
             _send_error(req_id, -32603, str(e))
 
 

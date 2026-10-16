@@ -2,6 +2,12 @@
 computer_batch: 在单次 MCP 调用中顺序执行多个动作，减少 round-trip 延迟。
 """
 
+import logging
+
+from utils import ComputerUseError
+
+logger = logging.getLogger(__name__)
+
 
 def handle_computer_batch(args):
     """
@@ -24,8 +30,8 @@ def handle_computer_batch(args):
       }
     """
     # 延迟导入避免循环依赖
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from main import handle_computer
@@ -34,7 +40,7 @@ def handle_computer_batch(args):
     stop_on_error = bool(args.get("stop_on_error", True))
 
     if not isinstance(actions, list) or not actions:
-        raise Exception("computer_batch requires non-empty 'actions' list")
+        raise ComputerUseError("computer_batch requires non-empty 'actions' list")
 
     results = []
     for i, action_args in enumerate(actions):
@@ -49,7 +55,7 @@ def handle_computer_batch(args):
                 (r.get("text", "ok") for r in result if r.get("type") == "text"), "ok"
             )
             results.append(f"[{i}] {action_args['action']}: {summary[:100]}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
             results.append(f"[{i}] {action_args['action']}: ERROR — {e}")
             if stop_on_error:
                 break

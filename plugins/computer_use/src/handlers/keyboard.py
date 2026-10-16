@@ -1,6 +1,8 @@
-import utils
-import time
 import platform
+import time
+
+import utils
+from utils import ComputerUseError
 
 
 def handle_type(args):
@@ -32,11 +34,14 @@ def handle_hold_key(args):
     - text: 要按住的键（'shift', 'cmd', 'ctrl', 'alt'）
     - coordinate: 点击坐标（可选）
     """
-    from pynput.mouse import Controller as _MC, Button as _Btn
+    from pynput.mouse import Button as _Btn
+    from pynput.mouse import Controller as _MC
 
     key_str = args.get("text", "").lower().strip()
     if not key_str:
-        raise Exception("hold_key requires 'text' (the key to hold, e.g. 'shift')")
+        raise ComputerUseError(
+            "hold_key requires 'text' (the key to hold, e.g. 'shift')"
+        )
 
     utils.restore_focus_if_needed()
 
@@ -44,7 +49,7 @@ def handle_hold_key(args):
     if target is None and len(key_str) == 1:
         target = key_str
     if target is None:
-        raise Exception(f"Unsupported key for hold_key: '{key_str}'")
+        raise ComputerUseError(f"Unsupported key for hold_key: '{key_str}'")
 
     m = _MC()
     coord = args.get("coordinate")
@@ -83,7 +88,7 @@ def handle_read_clipboard(args):
 
             text = pyperclip.paste()
         return [{"type": "text", "text": text}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 第三方原生库（.paste）异常类型不固定
         return [{"type": "text", "text": f"[clipboard read error: {e}]"}]
 
 
@@ -101,7 +106,7 @@ def handle_write_clipboard(args):
 
             pyperclip.copy(text)
         return [{"type": "text", "text": f"Clipboard set ({len(text)} chars)"}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 第三方原生库（.copy）异常类型不固定
         return [{"type": "text", "text": f"[clipboard write error: {e}]"}]
 
 
@@ -110,8 +115,9 @@ def handle_zoom(args):
     放大/缩小。
     - amount: 正数放大，负数缩小
     """
-    import utils
     import platform
+
+    import utils
 
     amount = float(args.get("amount", 0))
     if amount == 0:

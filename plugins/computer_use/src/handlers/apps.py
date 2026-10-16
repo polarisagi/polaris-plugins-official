@@ -1,15 +1,25 @@
-import subprocess
+import logging
 import platform
+import subprocess
 import time
-from utils import ensure_frontmost, get_frontmost_app_name, get_window_id_for_process
+
 from adapters.registry import get_adapter
 from profiles_loader import APP_PROFILES, resolve
+from utils import (
+    ComputerUseError,
+    ensure_frontmost,
+    get_frontmost_app_name,
+    get_window_id_for_process,
+)
+
 from .interaction import handle_focus_input
+
+logger = logging.getLogger(__name__)
 
 
 def _app_exists_mac(app_name: str, open_name: str, bundle_id: str) -> bool:
-    import shutil
     import os
+    import shutil
 
     if bundle_id:
         try:
@@ -17,11 +27,12 @@ def _app_exists_mac(app_name: str, open_name: str, bundle_id: str) -> bool:
                 ["mdfind", f"kMDItemCFBundleIdentifier == '{bundle_id}'"],
                 capture_output=True,
                 timeout=3,
+                check=False,
             )
             if result.stdout.strip():
                 return True
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("_app_exists_mac: 忽略失败: %s", e)
     search_name = open_name or app_name
     for base in ["/Applications", os.path.expanduser("~/Applications")]:
         if os.path.isdir(os.path.join(base, f"{search_name}.app")):
@@ -30,8 +41,8 @@ def _app_exists_mac(app_name: str, open_name: str, bundle_id: str) -> bool:
 
 
 def _app_exists_win(app_name: str) -> bool:
-    import shutil
     import os
+    import shutil
 
     if shutil.which(app_name):
         return True
@@ -44,6 +55,7 @@ def _app_exists_win(app_name: str) -> bool:
             return True
     try:
         import importlib
+
         winreg = importlib.import_module("winreg")  # type: ignore[assignment]  # Windows-only
         key = winreg.OpenKey(  # type: ignore[attr-defined]
             winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
@@ -54,14 +66,14 @@ def _app_exists_win(app_name: str) -> bool:
             return True
         except FileNotFoundError:
             pass
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001 — 第三方原生库（.OpenKey, .QueryValue, .import_module）异常类型不固定
+        logger.debug("_app_exists_win: 忽略失败: %s", e)
     return False
 
 
 def _app_exists_linux(app_name: str, open_name: str) -> bool:
-    import shutil
     import os
+    import shutil
 
     if shutil.which(app_name):
         return True
@@ -95,19 +107,22 @@ def handle_open_app(args):
     open_name = args.get("open_name", "") or app_name
     bundle_id = args.get("bundle_id", "")
     if not app_name and not open_name:
-        raise Exception("Missing app_name")
+        raise ComputerUseError("Missing app_name")
 
     plat = platform.system()
 
     # 1. 跨平台预检机制：在尝试唤醒之前，先检查应用在系统中是否真正安装
-    if open_name and open_name.lower() != "desktop":
-        if not _app_exists(app_name, open_name=open_name, bundle_id=bundle_id):
-            return [
-                {
-                    "type": "text",
-                    "text": f"App '{app_name}' is not installed or not found",
-                }
-            ]
+    if (
+        open_name
+        and open_name.lower() != "desktop"
+        and not _app_exists(app_name, open_name=open_name, bundle_id=bundle_id)
+    ):
+        return [
+            {
+                "type": "text",
+                "text": f"App '{app_name}' is not installed or not found",
+            }
+        ]
 
     # 2. 跨平台启动与聚焦 (Launch / Focus)
     if plat == "Darwin":
@@ -156,7 +171,12 @@ def handle_get_running_apps(args):
                 .strip()
             )
             apps = [name.strip() for name in out.split(",") if name.strip()]
-        except Exception as e:
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as e:
             return [{"type": "text", "text": f"Error getting apps: {e}"}]
     elif plat == "Windows":
         try:
@@ -172,10 +192,13 @@ def handle_get_running_apps(args):
                 .decode()
                 .strip()
             )
-            apps = list(
-                set([name.strip() for name in out.splitlines() if name.strip()])
-            )
-        except Exception as e:
+            apps = list({name.strip() for name in out.splitlines() if name.strip()})
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as e:
             return [{"type": "text", "text": f"Error getting apps: {e}"}]
     else:
         try:
@@ -185,7 +208,14 @@ def handle_get_running_apps(args):
                 for line in out.splitlines()
                 if len(line.split()) >= 4
             ]
-        except Exception as e:
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+            IndexError,
+            KeyError,
+        ) as e:
             return [
                 {"type": "text", "text": f"Error getting apps (requires wmctrl): {e}"}
             ]
@@ -201,12 +231,12 @@ def handle_get_running_apps(args):
 def _validate_send_args(contact_name: str, message: str):
     """Raise if required fields are missing or contain control characters."""
     if not contact_name:
-        raise Exception("send_message_to requires 'contact_name'")
+        raise ComputerUseError("send_message_to requires 'contact_name'")
     if not message:
-        raise Exception("send_message_to requires 'message'")
+        raise ComputerUseError("send_message_to requires 'message'")
     for field, val in (("contact_name", contact_name), ("message", message)):
         if any(ord(c) < 0x20 and c not in ("\t",) for c in val):
-            raise Exception(f"'{field}' contains disallowed control characters")
+            raise ComputerUseError(f"'{field}' contains disallowed control characters")
 
 
 def _activate_app_macos(open_name: str, proc_name: str, profile: dict, steps, _log):
@@ -215,7 +245,8 @@ def _activate_app_macos(open_name: str, proc_name: str, profile: dict, steps, _l
     if proc_name.lower() not in (front or "").lower():
         _log(f"[1b] Retrying focus (frontmost='{front}')")
         subprocess.run(
-            ["osascript", "-e", f'tell application "{open_name}" to activate']
+            ["osascript", "-e", f'tell application "{open_name}" to activate'],
+            check=False,
         )
         time.sleep(1.5)
         front = get_frontmost_app_name()
@@ -263,7 +294,7 @@ def handle_send_message_to(args):
         known = sorted(
             {k for k, v in APP_PROFILES.items() if v.get("category") == "chat"}
         )
-        raise Exception(
+        raise ComputerUseError(
             f"Unknown app '{app_key}'. Known chat apps: {', '.join(known)}."
         )
 
@@ -409,7 +440,14 @@ def handle_get_window_list(args):
                     f'  [{w["app"]}] "{w["title"]}" @ ({w["x"]},{w["y"]}) {w["width"]}×{w["height"]}'
                 )
             return [{"type": "text", "text": "\n".join(lines)}]
-        except Exception as e:
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+            IndexError,
+            KeyError,
+        ) as e:
             return [{"type": "text", "text": f"Error: {e}"}]
 
     elif plat == "Windows":
@@ -424,7 +462,7 @@ def handle_get_window_list(args):
                     f'  "{w.window_text()}" @ ({r.left},{r.top}) {r.width()}×{r.height()}'
                 )
             return [{"type": "text", "text": "\n".join(lines)}]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 第三方原生库（.rectangle, .window_text, .windows, Desktop）异常类型不固定
             return [{"type": "text", "text": f"Error: {e}"}]
 
     else:
@@ -438,7 +476,14 @@ def handle_get_window_list(args):
                         f'  "{parts[7]}" @ ({parts[2]},{parts[3]}) {parts[4]}×{parts[5]}'
                     )
             return [{"type": "text", "text": "\n".join(lines)}]
-        except Exception as e:
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+            IndexError,
+            KeyError,
+        ) as e:
             return [{"type": "text", "text": f"Error (requires wmctrl): {e}"}]
 
 
@@ -502,8 +547,10 @@ def handle_minimize_app(args):
 
     else:
         try:
-            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-b", "add,hidden"], timeout=3)
-        except Exception:
+            subprocess.run(
+                ["wmctrl", "-r", ":ACTIVE:", "-b", "add,hidden"], timeout=3, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
             _u.press_shortcut("super+h")
         return [{"type": "text", "text": "Minimized window"}]
 
@@ -515,7 +562,7 @@ def handle_quit_app(args):
     """
     app_name = args.get("app_name", "")
     if not app_name:
-        raise Exception("quit_app requires 'app_name'")
+        raise ComputerUseError("quit_app requires 'app_name'")
 
     plat = platform.system()
 
@@ -529,15 +576,17 @@ def handle_quit_app(args):
 
     elif plat == "Windows":
         try:
-            subprocess.run(["taskkill", "/IM", f"{app_name}.exe", "/F"], timeout=5)
-        except Exception as e:
+            subprocess.run(
+                ["taskkill", "/IM", f"{app_name}.exe", "/F"], timeout=5, check=False
+            )
+        except (OSError, subprocess.SubprocessError) as e:
             return [{"type": "text", "text": f"Error: {e}"}]
         return [{"type": "text", "text": f"Quit {app_name}"}]
 
     else:
         try:
-            subprocess.run(["pkill", "-x", app_name], timeout=5)
-        except Exception as e:
+            subprocess.run(["pkill", "-x", app_name], timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
             return [{"type": "text", "text": f"Error: {e}"}]
         return [{"type": "text", "text": f"Quit {app_name}"}]
 
@@ -559,16 +608,16 @@ def handle_send_file_to(args):
     contact_name = args.get("contact_name", "").strip()
     file_path = args.get("file_path", "").strip()
     if not contact_name:
-        raise Exception("send_file_to requires 'contact_name'")
+        raise ComputerUseError("send_file_to requires 'contact_name'")
     if not file_path:
-        raise Exception("send_file_to requires 'file_path'")
+        raise ComputerUseError("send_file_to requires 'file_path'")
     if not os.path.exists(file_path):
         return [{"type": "text", "text": f"File not found: {file_path}"}]
 
     app_key = args.get("app", args.get("app_name", "wechat")).strip().lower()
     profile = APP_PROFILES.get(app_key)
     if not profile:
-        raise Exception(f"Unknown app '{app_key}'")
+        raise ComputerUseError(f"Unknown app '{app_key}'")
 
     # Step 1: 打开对话（复用 open_app + 搜索选联系人逻辑）
     proc_name = profile.get("process_name", app_key)
@@ -613,7 +662,7 @@ def handle_send_file_to(args):
         set the clipboard to theImage
         """
         try:
-            subprocess.run(["osascript", "-e", osa], timeout=5)
+            subprocess.run(["osascript", "-e", osa], timeout=5, check=False)
             time.sleep(0.2)
             utils.press_shortcut("cmd+v")
             time.sleep(0.5)
@@ -625,8 +674,8 @@ def handle_send_file_to(args):
                     "text": f"✅ Sent image '{os.path.basename(file_path)}' to '{contact_name}'",
                 }
             ]
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — 第三方原生库（.press_shortcut）异常类型不固定
+            logger.debug("handle_send_file_to: 忽略失败: %s", e)
 
     # 非图片或图片粘贴失败：使用拖拽方式（通过 Finder）
     try:
@@ -637,7 +686,7 @@ def handle_send_file_to(args):
             activate
         end tell
         """
-        subprocess.run(["osascript", "-e", osa_drag], timeout=5)
+        subprocess.run(["osascript", "-e", osa_drag], timeout=5, check=False)
         time.sleep(0.5)
         bounds = utils.get_process_window_bounds(proc_name)
         if bounds:
@@ -660,7 +709,7 @@ def handle_send_file_to(args):
                         "text": f"✅ Dragged '{os.path.basename(file_path)}' to '{contact_name}'",
                     }
                 ]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
         return [
             {
                 "type": "text",

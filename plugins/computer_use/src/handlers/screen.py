@@ -1,12 +1,15 @@
-import os
-import json
-import time
-import platform
-import tempfile
-import subprocess
 import base64
+import json
+import logging
+import os
+import platform
+import subprocess
+import tempfile
+import time
 
 import utils
+
+logger = logging.getLogger(__name__)
 
 _DESCRIBE_SRC = os.path.join(os.path.dirname(__file__), "..", "describe_screen.swift")
 _DESCRIBE_BIN = os.path.join(os.path.dirname(__file__), "..", "describe_screen")
@@ -26,7 +29,7 @@ def _ensure_describe_binary() -> bool:
             timeout=60,
         )
         return True
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -66,7 +69,7 @@ def handle_get_ui_tree(args):
                 ["osascript", "-l", "JavaScript", "-e", jxa], timeout=10
             ).decode()
             return [{"type": "text", "text": out.strip()}]
-        except Exception:
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
             return [{"type": "text", "text": "[]"}]
 
     elif plat == "Windows":
@@ -84,7 +87,7 @@ def handle_get_ui_tree(args):
                 for c in win.descendants()
             ]
             return [{"type": "text", "text": json.dumps(elements)}]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 第三方原生库（.descendants, .friendly_class_name, .mid_point, .rectangle, .window_text, .windows, Desktop）异常类型不固定
             return [{"type": "text", "text": json.dumps({"error": str(e)})}]
 
     else:
@@ -118,8 +121,8 @@ def handle_get_ui_tree(args):
                                 "y": ext.y + ext.height // 2,
                             }
                         )
-                except Exception:
-                    pass
+                except Exception as e:  # noqa: BLE001 — 第三方原生库（.getExtents, .getRoleName, .queryComponent）异常类型不固定
+                    logger.debug("traverse: 忽略失败: %s", e)
                 for child in node:
                     traverse(child, depth + 1)
 
@@ -132,7 +135,7 @@ def handle_get_ui_tree(args):
                     "text": json.dumps([{"error": "install python3-pyatspi"}]),
                 }
             ]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
             return [{"type": "text", "text": json.dumps([{"error": str(e)}])}]
 
 
@@ -165,7 +168,7 @@ def _collect_ui_elements(
                 id_map[str(current_id)] = {"x": x, "y": y, "type": "UI", "name": name}
                 lines.append(f'[{current_id}] [{role}] "{name}"')
                 current_id += 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
         lines.append(f"UI tree unavailable: {exc}")
     return current_id
 
@@ -205,7 +208,7 @@ def _collect_ocr_text(app_name: str, lines: list, id_map: dict, start_id: int) -
                 }
                 lines.append(f'[{current_id}] "{text}"')
                 current_id += 1
-            elif len(parts) == 3: # Fallback for dev during transition
+            elif len(parts) == 3:  # Fallback for dev during transition
                 text = parts[0]
                 abs_x = int(float(parts[1])) + x_off
                 abs_y = int(float(parts[2])) + y_off
@@ -217,14 +220,14 @@ def _collect_ocr_text(app_name: str, lines: list, id_map: dict, start_id: int) -
                 }
                 lines.append(f'[{current_id}] "{text}"')
                 current_id += 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — 边界：单个动作/请求失败转为错误结果，不中断整体
         lines.append(f"\nOCR unavailable: {exc}")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("_collect_ocr_text: 忽略失败: %s", e)
     return current_id
 
 
@@ -250,7 +253,7 @@ def handle_get_screen_state(args):
                 },
                 f,
             )
-    except Exception as e:
+    except (OSError, TypeError) as e:
         lines.append(f"\nError saving state: {e}")
 
     return [{"type": "text", "text": "\n".join(lines) or "No screen state available"}]
@@ -269,8 +272,8 @@ def handle_screenshot(args):
             with open(config_path, "r") as f:
                 c = json.load(f)
                 save_screenshots = bool(c.get("save_screenshots", False))
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logger.debug("handle_screenshot: 忽略失败: %s", e)
 
     # Save the app_name to state so that subsequent low-level mouse clicks restore focus
     state_file = os.path.join(tempfile.gettempdir(), "computer_use_state.json")
@@ -283,8 +286,8 @@ def handle_screenshot(args):
         }
         with open(state_file, "w") as f:
             json.dump(state_data, f)
-    except Exception:
-        pass
+    except (OSError, TypeError) as e:
+        logger.debug("handle_screenshot: 忽略失败: %s", e)
 
     try:
         tmp_path, _, _ = utils.capture_screen(app_name=app_name)
@@ -296,12 +299,17 @@ def handle_screenshot(args):
             return [{"type": "image", "data": b64, "mimeType": "image/png"}]
         return [{"type": "text", "text": "Screenshot failed"}]
     finally:
-        if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
-            if not save_screenshots and mode != "path":
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
+        if (
+            "tmp_path" in locals()
+            and tmp_path
+            and os.path.exists(tmp_path)
+            and not save_screenshots
+            and mode != "path"
+        ):
+            try:
+                os.remove(tmp_path)
+            except OSError as e:
+                logger.debug("handle_screenshot: 忽略失败: %s", e)
 
 
 def handle_get_screen_info(args):
@@ -324,8 +332,13 @@ def handle_get_screen_info(args):
                 .strip()
             )
             return [{"type": "text", "text": out}]
-        except Exception:
-            pass
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as e:
+            logger.debug("handle_get_screen_info: 忽略失败: %s", e)
     import mss
 
     with mss.mss() as sct:

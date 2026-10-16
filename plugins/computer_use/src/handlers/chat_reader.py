@@ -2,13 +2,17 @@
 read_messages_from: 从聊天应用读取最近消息（macOS 专用，使用 OCR）。
 """
 
+import logging
 import os
+import platform
 import subprocess
 import time
-import platform
 
 import utils
 from profiles_loader import APP_PROFILES, resolve
+from utils import ComputerUseError
+
+logger = logging.getLogger(__name__)
 
 
 def handle_read_messages_from(args):
@@ -29,12 +33,12 @@ def handle_read_messages_from(args):
 
     contact_name = args.get("contact_name", "").strip()
     if not contact_name:
-        raise Exception("read_messages_from requires 'contact_name'")
+        raise ComputerUseError("read_messages_from requires 'contact_name'")
 
     app_key = args.get("app", args.get("app_name", "wechat")).strip().lower()
     profile = APP_PROFILES.get(app_key)
     if not profile:
-        raise Exception(f"Unknown app '{app_key}'")
+        raise ComputerUseError(f"Unknown app '{app_key}'")
 
     # Step 1: 打开对话（复用 open_app + 搜索逻辑）
     from handlers.apps import handle_open_app
@@ -76,7 +80,7 @@ def handle_read_messages_from(args):
     if not utils.compile_swift_binary(_DESCRIBE_SRC, _DESCRIBE_BIN):
         return [{"type": "text", "text": "OCR binary unavailable"}]
 
-    tmp_path, x_off, y_off = utils.capture_screen(app_name=open_name)
+    tmp_path, _x_off, _y_off = utils.capture_screen(app_name=open_name)
 
     try:
         if not (tmp_path and os.path.exists(tmp_path)):
@@ -109,5 +113,5 @@ def handle_read_messages_from(args):
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("handle_read_messages_from: 忽略失败: %s", e)
