@@ -2,16 +2,42 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Polaris Browser Bridge 设置</title>
   <style>
+    * { box-sizing: border-box; }
+    html { background: #f8fafc; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0;
+      margin: 0 auto;
       padding: 24px;
       background: #f8fafc;
       color: #0f172a;
-      max-width: 540px;
+      width: 100%;
+      max-width: 640px;
+      font-size: 14px;
+      line-height: 1.5;
     }
+    /* 工具栏弹窗：Chrome 按内容收缩宽度（上限 800x600），必须显式给定宽度 */
+    body.popup {
+      width: 420px;
+      max-width: none;
+      padding: 16px;
+    }
+    body.popup .card { padding: 12px; margin-bottom: 12px; }
+    code { word-break: break-all; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .status-msg.err { color: #dc2626; }
+    .saved { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.8125rem; color: #475569; }
+    .saved code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+    button.link { margin: 0; padding: 0; background: none; color: #dc2626; font-weight: 400; }
+    button.link:hover { background: none; text-decoration: underline; }
+    .state { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; }
+    .state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .state.ok { background: #dcfce7; color: #15803d; }
+    .state.off { background: #f1f5f9; color: #64748b; }
+    .state.bad { background: #fee2e2; color: #b91c1c; }
+    .hint { margin-top: 6px; font-size: 0.8125rem; color: #64748b; }
     h2 {
       margin-top: 0;
       font-size: 1.25rem;
@@ -82,19 +108,28 @@
   </style>
 </head>
 <body>
-  <h2>Polaris Browser Bridge</h2>
+  <h2>Polaris Browser Bridge <span id="version" class="badge"></span></h2>
+
+  <div class="card">
+    <label>连接状态</label>
+    <span id="connState" class="state off">检查中…</span>
+    <div id="connHint" class="hint"></div>
+    <div id="connectionsList" class="info-text"></div>
+  </div>
 
   <div class="card">
     <label for="tokenInput">配对令牌 (Pairing Token)</label>
-    <input type="text" id="tokenInput" placeholder="在此粘贴 Polaris 生成的配对令牌...">
-    <button id="saveBtn">保存令牌</button>
-    <div id="saveStatus" class="status-msg"></div>
+    <input type="text" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="粘贴 Polaris 生成的配对令牌（64 位十六进制）">
+    <div class="row">
+      <button id="saveBtn">保存令牌</button>
+      <span id="saveStatus" class="status-msg"></span>
+    </div>
+    <div id="savedRow" class="saved" hidden>
+      已保存：<code id="savedToken"></code>
+      <button id="clearBtn" class="link" type="button">清除</button>
+    </div>
   </div>
 
-  <div class="card">
-    <label>已连接的 Polaris 中继</label>
-    <div id="connectionsList" class="info-text">正在检查本地中继...</div>
-  </div>
 
   <div class="card">
     <label>隐私安全承诺</label>
