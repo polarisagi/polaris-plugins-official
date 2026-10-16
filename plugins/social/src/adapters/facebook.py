@@ -1,9 +1,9 @@
 """Facebook adapter."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class FacebookAdapter(BaseAdapter):
@@ -79,11 +79,11 @@ class FacebookAdapter(BaseAdapter):
                 )
                 text = await post.inner_text()
                 results.append({"url": href, "snippet": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         """Facebook doesn't expose draft saving — compose then close without posting."""
         await self.open_platform()
         if media_paths:
@@ -114,7 +114,7 @@ class FacebookAdapter(BaseAdapter):
         items = await self.page.locator('div[aria-label*="Comment by"]').all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('div:has-text("Reply")').first.click()
         await asyncio.sleep(1)
         await self.page.keyboard.type(text)
@@ -128,7 +128,7 @@ class FacebookAdapter(BaseAdapter):
         items = await self.page.locator('div[aria-label*="Comment by"]').all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].hover()
         await asyncio.sleep(1)
         dots = items[idx].locator('div[aria-label*="More"]').first
@@ -214,8 +214,8 @@ class FacebookAdapter(BaseAdapter):
                 text = await post.inner_text()
                 if href:
                     results.append({"url": href, "snippet": text[:100]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -239,8 +239,8 @@ class FacebookAdapter(BaseAdapter):
                     results.append({"topic": text})
                     if len(results) >= limit:
                         break
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -342,8 +342,8 @@ class FacebookAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -359,8 +359,8 @@ class FacebookAdapter(BaseAdapter):
                     results.append({"content": text[:150]})
                     if len(results) >= limit:
                         break
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── Special Formats ─────────────────────────────────────────────────────
@@ -373,7 +373,7 @@ class FacebookAdapter(BaseAdapter):
             'span:has-text("Create story"), div[aria-label*="Create a story"]'
         ).first
         if await story_btn.count() == 0:
-            raise Exception("Story creation button not found.")
+            raise AdapterError("Story creation button not found.")
         await story_btn.click()
         await asyncio.sleep(2)
         # Upload media

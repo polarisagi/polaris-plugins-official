@@ -1,8 +1,9 @@
 """TikTok (international) adapter — video-first platform."""
 
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class TikTokAdapter(BaseAdapter):
@@ -19,12 +20,14 @@ class TikTokAdapter(BaseAdapter):
             await self.page.wait_for_selector(
                 'input[type="file"], .upload-btn-input', timeout=15000
             )
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if "login" in self.page.url or "passport" in self.page.url:
-                raise Exception(
+                raise AdapterError(
                     "Login required for TikTok. Please log in manually in Chrome."
                 )
-            raise Exception("TikTok upload page failed to load. UI may have changed.")
+            raise AdapterError(
+                "TikTok upload page failed to load. UI may have changed."
+            )
 
     async def upload_media(self, media_paths: list):
         if not media_paths:
@@ -34,7 +37,7 @@ class TikTokAdapter(BaseAdapter):
         # TikTok prefers video; images are used for photo posts
         files = media["videos"] or media["images"]
         if not files:
-            raise Exception("TikTok requires at least one video or image file.")
+            raise AdapterError("TikTok requires at least one video or image file.")
         file_input = self.page.locator('input[type="file"]').first
         await file_input.wait_for(state="attached", timeout=5000)
         await file_input.set_input_files(files[:1])  # TikTok: one video at a time
@@ -94,8 +97,8 @@ class TikTokAdapter(BaseAdapter):
                         "snippet": title[:100],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── Engagement ──────────────────────────────────────────────────────────
@@ -115,8 +118,8 @@ class TikTokAdapter(BaseAdapter):
                     '[data-e2e="comment-username"]'
                 ).first.inner_text()
                 comments.append({"id": str(i), "author": author, "content": text[:200]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return comments
 
     async def reply_to_comment(self, post_url: str, comment_id: str, text: str):
@@ -126,7 +129,7 @@ class TikTokAdapter(BaseAdapter):
         items = await self.page.locator('[data-e2e="comment-item"]').all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('span:has-text("Reply")').first.click()
         await asyncio.sleep(1)
         input_box = self.page.locator('[data-e2e="comment-input"]').first
@@ -142,7 +145,7 @@ class TikTokAdapter(BaseAdapter):
         items = await self.page.locator('[data-e2e="comment-item"]').all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].hover()
         await asyncio.sleep(0.5)
         await items[idx].locator('[data-e2e="comment-more"]').first.click()
@@ -178,8 +181,8 @@ class TikTokAdapter(BaseAdapter):
                         "snippet": title[:100],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -198,8 +201,8 @@ class TikTokAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"topic": text.strip().split("\n")[0]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 """小红书 (Xiaohongshu) adapter."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class XiaohongshuAdapter(BaseAdapter):
@@ -20,15 +20,15 @@ class XiaohongshuAdapter(BaseAdapter):
             await self.page.wait_for_selector(
                 ".upload-container", timeout=10000, state="visible"
             )
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if (
                 "login" in self.page.url
                 or await self.page.locator('text="登录"').count() > 0
             ):
-                raise Exception(
+                raise AdapterError(
                     "Login required for Xiaohongshu. Please login manually in Chrome first."
                 )
-            raise Exception(
+            raise AdapterError(
                 "Failed to load Xiaohongshu creator center. The UI might have changed."
             )
 
@@ -101,11 +101,11 @@ class XiaohongshuAdapter(BaseAdapter):
                         "snippet": title,
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         print("Xiaohongshu: Saving draft...")
         await self.open_platform()
         if media_paths:
@@ -144,7 +144,7 @@ class XiaohongshuAdapter(BaseAdapter):
         items = await self.page.locator(".comment-item").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator(".reply-btn").click()
         input_box = self.page.locator(".comment-input").first
         await input_box.wait_for(state="visible", timeout=5000)
@@ -160,7 +160,7 @@ class XiaohongshuAdapter(BaseAdapter):
         items = await self.page.locator(".comment-item").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].hover()
         delete_btn = items[idx].locator('span:has-text("删除"), svg.delete-icon').first
         await delete_btn.wait_for(state="visible", timeout=5000)
@@ -217,8 +217,8 @@ class XiaohongshuAdapter(BaseAdapter):
                 results.append(
                     {"url": f"https://www.xiaohongshu.com{link}", "snippet": title}
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -241,8 +241,8 @@ class XiaohongshuAdapter(BaseAdapter):
                     results.append({"topic": text})
                     if len(results) >= limit:
                         break
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         # Also check the discovery/trending section
         if not results:
             hot_items = await self.page.locator(".topic-item, .hot-topic").all()
@@ -252,8 +252,8 @@ class XiaohongshuAdapter(BaseAdapter):
                     if text and text not in seen:
                         seen.add(text)
                         results.append({"topic": text})
-                except Exception:
-                    pass
+                except DOM_ITEM_ERRORS as e:
+                    logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -322,7 +322,7 @@ class XiaohongshuAdapter(BaseAdapter):
         await asyncio.sleep(2)
         msg_btn = self.page.locator('button:has-text("私信")').first
         if await msg_btn.count() == 0:
-            raise Exception("私信 button not found. The user may not allow DMs.")
+            raise AdapterError("私信 button not found. The user may not allow DMs.")
         await msg_btn.click()
         await asyncio.sleep(2)
         msg_input = self.page.locator(
@@ -396,8 +396,8 @@ class XiaohongshuAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -410,6 +410,6 @@ class XiaohongshuAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results

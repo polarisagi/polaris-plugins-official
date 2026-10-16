@@ -1,9 +1,9 @@
 """LinkedIn adapter — professional network."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class LinkedInAdapter(BaseAdapter):
@@ -24,12 +24,12 @@ class LinkedInAdapter(BaseAdapter):
             await start_btn.wait_for(state="visible", timeout=15000)
             await start_btn.click()
             await asyncio.sleep(1)
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if "login" in self.page.url or "authwall" in self.page.url:
-                raise Exception(
+                raise AdapterError(
                     "Login required for LinkedIn. Please log in manually in Chrome."
                 )
-            raise Exception("Failed to open LinkedIn composer. UI may have changed.")
+            raise AdapterError("Failed to open LinkedIn composer. UI may have changed.")
 
     async def upload_media(self, media_paths: list):
         if not media_paths:
@@ -113,11 +113,11 @@ class LinkedInAdapter(BaseAdapter):
                 results.append(
                     {"url": f"https://www.linkedin.com{link}", "snippet": text[:150]}
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         print("LinkedIn: Saving draft...")
         await self.open_platform()
         await self.fill_content(content)
@@ -148,8 +148,8 @@ class LinkedInAdapter(BaseAdapter):
                     ".comments-comment-item__main-content"
                 ).first.inner_text()
                 comments.append({"id": str(i), "author": author, "content": text[:200]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return comments
 
     async def reply_to_comment(self, post_url: str, comment_id: str, text: str):
@@ -158,7 +158,7 @@ class LinkedInAdapter(BaseAdapter):
         items = await self.page.locator(".comments-comment-item").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('button:has-text("Reply")').first.click()
         await asyncio.sleep(1)
         input_box = self.page.locator(
@@ -175,7 +175,7 @@ class LinkedInAdapter(BaseAdapter):
         items = await self.page.locator(".comments-comment-item").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         more = items[idx].locator('button[aria-label*="more"]').first
         await more.click()
         await asyncio.sleep(0.5)
@@ -235,8 +235,8 @@ class LinkedInAdapter(BaseAdapter):
                 link = await item.locator("a").first.get_attribute("href")
                 text = await item.inner_text()
                 results.append({"url": link, "snippet": text[:120]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -301,7 +301,7 @@ class LinkedInAdapter(BaseAdapter):
 
     # ─── Special Formats ─────────────────────────────────────────────────────
 
-    async def post_thread(self, tweets: list, media_paths: Optional[list] = None):
+    async def post_thread(self, tweets: list, media_paths: list | None = None):
         """LinkedIn doesn't have true threads; post as a document/carousel or single post."""
         combined = "\n\n".join(tweets)
         await self.open_platform()

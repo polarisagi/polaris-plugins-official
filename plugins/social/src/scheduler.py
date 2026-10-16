@@ -3,7 +3,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 SCHEDULE_FILE = Path.home() / ".polaris_social_scheduler.json"
 
@@ -12,7 +11,7 @@ def _load() -> list:
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text("utf-8"))
-        except Exception:
+        except (OSError, ValueError):  # 文件损坏或不可读时视为空队列
             return []
     return []
 
@@ -27,7 +26,7 @@ def add_task(
     media_paths: list,
     scheduled_time: str,
     post_type: str = "post",
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
 ) -> str:
     """Schedule a post. scheduled_time must be ISO-8601 (e.g. '2025-07-01T09:00:00').
     Returns the task_id."""
@@ -50,7 +49,7 @@ def add_task(
     return task_id
 
 
-def list_tasks(platform: Optional[str] = None, status: str = "pending") -> list:
+def list_tasks(platform: str | None = None, status: str = "pending") -> list:
     tasks = _load()
     if platform:
         tasks = [t for t in tasks if t["platform"] == platform]

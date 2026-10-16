@@ -13,7 +13,7 @@ Supported read platforms (recipes):
 
 import asyncio
 import os
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -101,16 +101,16 @@ async def social_selftest(platform: ReadPlatform) -> dict[str, Any]:
 
 
 def _get_adapters():
-    from .adapters.twitter import TwitterAdapter
-    from .adapters.weibo import WeiboAdapter
-    from .adapters.xiaohongshu import XiaohongshuAdapter
     from .adapters.douyin import DouyinAdapter
-    from .adapters.wechat import WechatAdapter
-    from .adapters.instagram import InstagramAdapter
     from .adapters.facebook import FacebookAdapter
-    from .adapters.tiktok import TikTokAdapter
+    from .adapters.instagram import InstagramAdapter
     from .adapters.linkedin import LinkedInAdapter
     from .adapters.threads import ThreadsAdapter
+    from .adapters.tiktok import TikTokAdapter
+    from .adapters.twitter import TwitterAdapter
+    from .adapters.wechat import WechatAdapter
+    from .adapters.weibo import WeiboAdapter
+    from .adapters.xiaohongshu import XiaohongshuAdapter
 
     return {
         "twitter": TwitterAdapter,
@@ -160,7 +160,7 @@ async def _get_adapter(platform: str):
 async def auto_post(
     platform: str,
     content: str,
-    media_paths: Optional[list[str]] = None,
+    media_paths: list[str] | None = None,
 ):
     """
     Post text + images/videos to a social media platform.
@@ -184,7 +184,7 @@ async def auto_post(
         await adapter.fill_content(formatted)
         await adapter.submit_post()
         return f"✅ Successfully posted to {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ Failed to post to {platform}: {e}"
 
 
@@ -192,7 +192,7 @@ async def auto_post(
 async def batch_post(
     platforms: list[str],
     content: str,
-    media_paths: Optional[list[str]] = None,
+    media_paths: list[str] | None = None,
 ):
     """
     Post the same content to multiple platforms simultaneously.
@@ -216,8 +216,8 @@ async def post_video(
     platform: str,
     video_path: str,
     description: str,
-    cover_path: Optional[str] = None,
-    music_path: Optional[str] = None,
+    cover_path: str | None = None,
+    music_path: str | None = None,
 ):
     """
     Upload and publish a video with extended metadata (cover, music).
@@ -261,7 +261,7 @@ async def post_story(
         return f"✅ Story posted to {platform}."
     except NotImplementedError:
         return f"⚠️ {platform} does not support stories via this plugin yet."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ Failed to post story to {platform}: {e}"
 
 
@@ -270,7 +270,7 @@ async def post_story(
 async def post_thread(
     platform: str,
     tweets: list[str],
-    media_paths: Optional[list[str]] = None,
+    media_paths: list[str] | None = None,
 ):
     """
     Post a thread / series of connected posts (Twitter thread, LinkedIn long-form).
@@ -290,7 +290,7 @@ async def post_thread(
         return f"✅ Thread of {len(tweets)} posts published to {platform}."
     except NotImplementedError:
         return f"⚠️ {platform} does not support threads via this plugin."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ Failed to post thread to {platform}: {e}"
 
 
@@ -302,7 +302,7 @@ async def schedule_post(
     platform: str,
     content: str,
     scheduled_time: str,
-    media_paths: Optional[list[str]] = None,
+    media_paths: list[str] | None = None,
     post_type: str = "post",
 ):
     """
@@ -326,7 +326,7 @@ async def schedule_post(
 
 
 @mcp.tool(annotations=LOCAL_READ_ANN)
-async def list_scheduled_posts(platform: Optional[str] = None):
+async def list_scheduled_posts(platform: str | None = None):
     """
     List all pending scheduled posts.
 
@@ -388,7 +388,7 @@ async def run_scheduled_posts():
                 continue
             scheduler.mark_done(task["id"], True)
             results[task["id"]] = r
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
             scheduler.mark_done(task["id"], False, str(e))
             results[task["id"]] = f"❌ {e}"
     return results
@@ -407,7 +407,7 @@ async def delete_post(platform: str, post_identifier: str):
     try:
         await adapter.delete_post(post_identifier)
         return f"✅ Post deleted on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ Failed to delete post on {platform}: {e}"
 
 
@@ -423,7 +423,7 @@ async def edit_post(platform: str, post_identifier: str, new_content: str):
         return f"✅ Post edited on {platform}."
     except NotImplementedError:
         return f"⚠️ {platform} does not support post editing."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ Failed to edit post on {platform}: {e}"
 
 
@@ -438,7 +438,7 @@ async def get_my_posts(platform: str, limit: int = 10):
         return await adapter.get_my_posts(limit)
     except NotImplementedError:
         return [{"error": f"get_my_posts not supported on {platform}."}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -454,15 +454,13 @@ async def pin_post(platform: str, post_identifier: str):
         return f"✅ Post pinned on {platform}."
     except NotImplementedError:
         return f"⚠️ {platform} does not support pinning via this plugin."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
 @mcp.tool(annotations=WRITE_ANN)
 @rate_limited_write
-async def save_draft(
-    platform: str, content: str, media_paths: Optional[list[str]] = None
-):
+async def save_draft(platform: str, content: str, media_paths: list[str] | None = None):
     """Save a post as a draft (without publishing)."""
     adapter = await _get_adapter(platform)
     if isinstance(adapter, str):
@@ -472,7 +470,7 @@ async def save_draft(
         return f"✅ Draft saved on {platform}."
     except NotImplementedError:
         return f"⚠️ {platform} does not support drafts via this plugin."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -488,7 +486,7 @@ async def get_comments(platform: str, post_identifier: str) -> list[dict]:
         return [{"error": adapter}]
     try:
         return await adapter.get_comments(post_identifier)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -504,7 +502,7 @@ async def reply_comment(
     try:
         await adapter.reply_to_comment(post_identifier, comment_id, text)
         return f"✅ Replied to comment {comment_id} on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -518,7 +516,7 @@ async def delete_comment(platform: str, post_identifier: str, comment_id: str):
     try:
         await adapter.delete_comment(post_identifier, comment_id)
         return f"✅ Comment {comment_id} deleted/hidden on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -537,7 +535,7 @@ async def like_post(platform: str, post_identifier: str):
         return f"✅ Liked post on {platform}."
     except NotImplementedError:
         return f"⚠️ like_post not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -553,7 +551,7 @@ async def unlike_post(platform: str, post_identifier: str):
         return f"✅ Unliked post on {platform}."
     except NotImplementedError:
         return f"⚠️ unlike_post not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -569,7 +567,7 @@ async def repost(platform: str, post_identifier: str):
         return f"✅ Reposted on {platform}."
     except NotImplementedError:
         return f"⚠️ repost not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -585,7 +583,7 @@ async def quote_post(platform: str, post_identifier: str, comment: str):
         return f"✅ Quote-posted on {platform}."
     except NotImplementedError:
         return f"⚠️ quote_post not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -601,7 +599,7 @@ async def search_posts(platform: str, query: str) -> list[dict]:
         return [{"error": adapter}]
     try:
         return await adapter.search_posts(query)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -614,7 +612,7 @@ async def read_post(platform: str, post_identifier: str) -> str:
         return adapter
     try:
         return await adapter.read_post(post_identifier)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -629,7 +627,7 @@ async def get_trending_topics(platform: str, limit: int = 10) -> list[dict]:
         return await adapter.get_trending_topics(limit)
     except NotImplementedError:
         return [{"error": f"get_trending_topics not supported on {platform}."}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -647,7 +645,7 @@ async def get_user_profile(platform: str, username: str) -> dict:
         return await adapter.get_user_profile(username)
     except NotImplementedError:
         return {"error": f"get_user_profile not supported on {platform}."}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return {"error": str(e)}
 
 
@@ -663,7 +661,7 @@ async def follow_user(platform: str, username: str):
         return f"✅ Now following {username} on {platform}."
     except NotImplementedError:
         return f"⚠️ follow_user not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -679,7 +677,7 @@ async def unfollow_user(platform: str, username: str):
         return f"✅ Unfollowed {username} on {platform}."
     except NotImplementedError:
         return f"⚠️ unfollow_user not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -695,7 +693,7 @@ async def block_user(platform: str, username: str):
         return f"✅ Blocked {username} on {platform}."
     except NotImplementedError:
         return f"⚠️ block_user not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -711,7 +709,7 @@ async def mute_user(platform: str, username: str):
         return f"✅ Muted {username} on {platform}."
     except NotImplementedError:
         return f"⚠️ mute_user not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -727,7 +725,7 @@ async def send_dm(platform: str, username: str, text: str):
         return f"✅ DM sent to {username} on {platform}."
     except NotImplementedError:
         return f"⚠️ send_dm not supported on {platform}."
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"❌ {e}"
 
 
@@ -745,7 +743,7 @@ async def get_post_analytics(platform: str, post_identifier: str) -> dict:
         return await adapter.get_post_analytics(post_identifier)
     except NotImplementedError:
         return {"error": f"get_post_analytics not supported on {platform}."}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return {"error": str(e)}
 
 
@@ -760,7 +758,7 @@ async def get_account_analytics(platform: str) -> dict:
         return await adapter.get_account_analytics()
     except NotImplementedError:
         return {"error": f"get_account_analytics not supported on {platform}."}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return {"error": str(e)}
 
 
@@ -778,7 +776,7 @@ async def get_notifications(platform: str, limit: int = 20) -> list[dict]:
         return await adapter.get_notifications(limit)
     except NotImplementedError:
         return [{"error": f"get_notifications not supported on {platform}."}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -793,7 +791,7 @@ async def get_mentions(platform: str, limit: int = 20) -> list[dict]:
         return await adapter.get_mentions(limit)
     except NotImplementedError:
         return [{"error": f"get_mentions not supported on {platform}."}]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return [{"error": str(e)}]
 
 
@@ -826,8 +824,13 @@ def get_platform_skill(platform: str) -> str:
     try:
         with open(path, encoding="utf-8") as f:
             return f.read()
-    except Exception as e:
+    except OSError as e:
         return f"Failed to load skill file: {e}"
+
+
+CONTENT_TEMPLATES = frozenset(
+    {"product_review", "daily_vlog", "meme_joke", "video_short", "thread_story"}
+)
 
 
 @mcp.tool(annotations=LOCAL_READ_ANN)
@@ -836,13 +839,19 @@ def get_content_template(template_type: str) -> str:
     Return a post content template.
     Available: product_review, daily_vlog, meme_joke, video_short, thread_story.
     """
+    # 白名单校验：template_type 由模型传入，直接拼路径会被 "../" 穿越读取任意 .md 文件
+    if template_type not in CONTENT_TEMPLATES:
+        return (
+            f"Template '{template_type}' not found. "
+            "Available: product_review, daily_vlog, meme_joke, video_short, thread_story."
+        )
     src_dir = os.path.dirname(os.path.abspath(__file__))
     plugin_dir = os.path.dirname(src_dir)
     path = os.path.join(plugin_dir, "skills", "templates", f"{template_type}.md")
     try:
         with open(path, encoding="utf-8") as f:
             return f.read()
-    except Exception:
+    except OSError:
         return (
             f"Template '{template_type}' not found. "
             "Available: product_review, daily_vlog, meme_joke, video_short, thread_story."
@@ -888,9 +897,10 @@ async def search_free_image(query: str) -> str:
     Args:
         query: Search keyword (e.g. "mountain sunset", "coffee shop").
     """
-    import urllib.parse
     import tempfile
     import time
+    import urllib.parse
+
     from .utils.browser import ensure_page
 
     page = await ensure_page()
@@ -913,7 +923,7 @@ async def search_free_image(query: str) -> str:
         fpath = os.path.join(tmp, fname)
         await asyncio.to_thread(download_image, img_url, fpath)
         return fpath
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — 工具边界：任何异常都转为错误结果返回给模型，不让 MCP 服务崩溃
         return f"Failed to search/download image: {e}"
 
 

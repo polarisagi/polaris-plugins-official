@@ -1,7 +1,29 @@
 """Base adapter — defines the full capability interface for every platform."""
 
+import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+
+from ..utils.browser_hub import PlaywrightError, PwError
+
+logger = logging.getLogger("polaris.social.adapters")
+
+
+class AdapterError(RuntimeError):
+    """平台适配器执行失败：需要登录、页面结构变化、参数不合法等。"""
+
+
+# 逐条抓取 DOM 元素时的预期失败：驱动异常（元素消失、超时），以及 get_attribute 等返回 None
+# 后取值引发的 AttributeError / TypeError、解析数字的 ValueError、下标越界等。
+# 单条失败只跳过该条，不中断整体结果；真正的程序错误（如 NameError）不会被吞掉。
+DOM_ITEM_ERRORS: tuple[type[Exception], ...] = (
+    PwError,
+    PlaywrightError,
+    AttributeError,
+    TypeError,
+    ValueError,
+    IndexError,
+    KeyError,
+)
 
 
 class BaseAdapter(ABC):
@@ -50,7 +72,7 @@ class BaseAdapter(ABC):
         """Pin a post to the top of the profile."""
         raise NotImplementedError("pin_post is not supported on this platform.")
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         """Save a post as a draft instead of publishing."""
         raise NotImplementedError("save_draft is not supported on this platform.")
 
@@ -162,6 +184,6 @@ class BaseAdapter(ABC):
         """Post an ephemeral story (Instagram, Facebook, etc.)."""
         raise NotImplementedError("post_story is not supported on this platform.")
 
-    async def post_thread(self, tweets: list, media_paths: Optional[list] = None):
+    async def post_thread(self, tweets: list, media_paths: list | None = None):
         """Post a series of connected posts (Twitter thread, LinkedIn carousel, etc.)."""
         raise NotImplementedError("post_thread is not supported on this platform.")

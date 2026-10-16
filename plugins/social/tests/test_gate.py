@@ -114,7 +114,11 @@ async def test_decorator_passthrough_for_unknown_platform() -> None:
 async def test_read_and_write_share_one_bucket() -> None:
     """真实限速库：写入占满 x 的每小时配额后，读取同一平台被拒绝。"""
     limits = ratelimit.Limits(
-        min_interval_s=0.0, jitter_s=(0.0, 0.0), max_per_hour=2, max_per_day=10
+        min_interval_s=0.0,
+        jitter_s=(0.0, 0.0),
+        max_per_hour=2,
+        max_per_day=10,
+        active_hours="00:00-24:00",  # 与时段无关，避免夜间运行时被时段规则先拦截
     )
     await ratelimit.acquire("x", limits)
     await ratelimit.acquire(gate.rate_key("twitter"), limits)

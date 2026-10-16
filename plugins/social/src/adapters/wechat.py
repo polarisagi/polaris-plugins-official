@@ -1,9 +1,9 @@
 """WeChat Official Accounts adapter."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class WechatAdapter(BaseAdapter):
@@ -79,8 +79,8 @@ class WechatAdapter(BaseAdapter):
                         "snippet": title.strip(),
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def edit_post(self, post_url: str, new_content: str):
@@ -101,7 +101,7 @@ class WechatAdapter(BaseAdapter):
         await save_btn.click()
         await asyncio.sleep(2)
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         print("WeChat: Saving draft...")
         await self.open_platform()
         if media_paths:
@@ -133,7 +133,7 @@ class WechatAdapter(BaseAdapter):
         items = await self.page.locator(".weui-desktop-table__row").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('a:has-text("回复")').first.click()
         await asyncio.sleep(1)
         await self.page.locator("textarea.weui-desktop-form__textarea").first.fill(text)
@@ -147,7 +147,7 @@ class WechatAdapter(BaseAdapter):
         items = await self.page.locator(".weui-desktop-table__row").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('a:has-text("删除")').first.click()
         await asyncio.sleep(1)
         await self.page.locator('button:has-text("确定")').first.click()
@@ -168,8 +168,8 @@ class WechatAdapter(BaseAdapter):
                 if link and link.startswith("/link"):
                     link = "https://weixin.sogou.com" + link
                 results.append({"url": link, "snippet": title})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -189,8 +189,8 @@ class WechatAdapter(BaseAdapter):
                 text = (await item.inner_text()).strip()
                 if text:
                     results.append({"topic": text})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -244,8 +244,8 @@ class WechatAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -259,6 +259,6 @@ class WechatAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results

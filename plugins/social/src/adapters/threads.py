@@ -1,8 +1,9 @@
 """Threads (Meta) adapter."""
 
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class ThreadsAdapter(BaseAdapter):
@@ -22,12 +23,12 @@ class ThreadsAdapter(BaseAdapter):
             await compose_btn.wait_for(state="visible", timeout=15000)
             await compose_btn.click()
             await asyncio.sleep(1)
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if "login" in self.page.url:
-                raise Exception(
+                raise AdapterError(
                     "Login required for Threads. Please log in manually in Chrome."
                 )
-            raise Exception("Failed to open Threads composer. UI may have changed.")
+            raise AdapterError("Failed to open Threads composer. UI may have changed.")
 
     async def upload_media(self, media_paths: list):
         if not media_paths:
@@ -93,8 +94,8 @@ class ThreadsAdapter(BaseAdapter):
                         "snippet": text[:150],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── Engagement ──────────────────────────────────────────────────────────
@@ -108,8 +109,8 @@ class ThreadsAdapter(BaseAdapter):
             try:
                 text = await el.locator("span").first.inner_text()
                 comments.append({"id": str(i), "content": text[:200]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return comments
 
     async def reply_to_comment(self, post_url: str, comment_id: str, text: str):
@@ -118,7 +119,7 @@ class ThreadsAdapter(BaseAdapter):
         items = await self.page.locator("article").all()
         idx = int(comment_id) + 1
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('svg[aria-label*="Reply"]').first.click()
         await asyncio.sleep(1)
         editor = self.page.locator('[contenteditable="true"]').first
@@ -133,7 +134,7 @@ class ThreadsAdapter(BaseAdapter):
         items = await self.page.locator("article").all()
         idx = int(comment_id) + 1
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         more = items[idx].locator('svg[aria-label*="More"]').first
         await more.click()
         await asyncio.sleep(0.5)
@@ -177,8 +178,8 @@ class ThreadsAdapter(BaseAdapter):
                         "snippet": text[:120],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:

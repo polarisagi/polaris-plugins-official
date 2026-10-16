@@ -1,9 +1,9 @@
 """Instagram adapter."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class InstagramAdapter(BaseAdapter):
@@ -94,8 +94,8 @@ class InstagramAdapter(BaseAdapter):
                         "snippet": "Instagram post",
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def pin_post(self, post_url: str):
@@ -106,11 +106,11 @@ class InstagramAdapter(BaseAdapter):
         await asyncio.sleep(1)
         pin_btn = self.page.locator('button:has-text("Pin to your profile")').first
         if await pin_btn.count() == 0:
-            raise Exception("Pin option not available for this post.")
+            raise AdapterError("Pin option not available for this post.")
         await pin_btn.click()
         await asyncio.sleep(2)
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         print("Instagram: Saving draft...")
         await self.open_platform()
         if media_paths:
@@ -138,8 +138,8 @@ class InstagramAdapter(BaseAdapter):
             try:
                 text = await el.inner_text()
                 comments.append({"id": str(i), "content": text[:200]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return comments
 
     async def reply_to_comment(self, post_url: str, comment_id: str, text: str):
@@ -148,7 +148,7 @@ class InstagramAdapter(BaseAdapter):
         items = await self.page.locator("ul > li").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('button:has-text("Reply")').click()
         await asyncio.sleep(1)
         await self.page.locator("textarea").fill(text)
@@ -162,7 +162,7 @@ class InstagramAdapter(BaseAdapter):
         items = await self.page.locator("ul > li").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].hover()
         await asyncio.sleep(1)
         dots = items[idx].locator('svg[aria-label="More options"]').first
@@ -180,7 +180,7 @@ class InstagramAdapter(BaseAdapter):
             'svg[aria-label="Like"], button[aria-label="Like"]'
         ).first
         if await like_btn.count() == 0:
-            raise Exception("Like button not found — post may already be liked.")
+            raise AdapterError("Like button not found — post may already be liked.")
         await like_btn.click()
         await asyncio.sleep(1)
 
@@ -192,7 +192,7 @@ class InstagramAdapter(BaseAdapter):
             'svg[aria-label="Unlike"], button[aria-label="Unlike"]'
         ).first
         if await unlike_btn.count() == 0:
-            raise Exception("Unlike button not found — post may not be liked.")
+            raise AdapterError("Unlike button not found — post may not be liked.")
         await unlike_btn.click()
         await asyncio.sleep(1)
 
@@ -227,8 +227,8 @@ class InstagramAdapter(BaseAdapter):
                         "snippet": "Instagram post",
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -253,8 +253,8 @@ class InstagramAdapter(BaseAdapter):
                     results.append({"topic": f"#{tag}"})
                     if len(results) >= limit:
                         break
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -383,8 +383,8 @@ class InstagramAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -406,8 +406,8 @@ class InstagramAdapter(BaseAdapter):
                     results.append({"content": text[:150], "url": href})
                     if len(results) >= limit:
                         break
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── Special Formats ─────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ class InstagramAdapter(BaseAdapter):
             # Try the "+" in the sidebar or Stories carousel
             story_btn = self.page.locator('a[href*="/stories/create"]').first
         if await story_btn.count() == 0:
-            raise Exception(
+            raise AdapterError(
                 "Story creation button not found. Instagram UI may have changed."
             )
         await story_btn.click()

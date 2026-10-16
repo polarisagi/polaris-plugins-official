@@ -117,7 +117,11 @@ async def test_real_shared_bucket_blocks_reads_after_writes(
     adapter: FakeAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     limits = ratelimit.Limits(
-        min_interval_s=0.0, jitter_s=(0.0, 0.0), max_per_hour=1, max_per_day=5
+        min_interval_s=0.0,
+        jitter_s=(0.0, 0.0),
+        max_per_hour=1,
+        max_per_day=5,
+        active_hours="00:00-24:00",  # 与时段无关，避免夜间运行时被时段规则先拦截
     )
     monkeypatch.setattr(gate, "limits_for", lambda _k: limits)
     await ratelimit.acquire("x", limits)  # 模拟一次写入已占满配额

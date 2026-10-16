@@ -1,9 +1,9 @@
 """Twitter / X adapter."""
 
-from typing import Optional
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class TwitterAdapter(BaseAdapter):
@@ -13,8 +13,8 @@ class TwitterAdapter(BaseAdapter):
         await self.page.goto(url, wait_until="domcontentloaded")
         try:
             await self.page.wait_for_load_state("networkidle", timeout=5000)
-        except Exception:
-            pass
+        except DOM_ITEM_ERRORS as e:
+            logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
 
     async def _wait(self, selector: str, timeout: int = 10000):
         await self.page.wait_for_selector(selector, state="visible", timeout=timeout)
@@ -31,12 +31,14 @@ class TwitterAdapter(BaseAdapter):
         await self._goto("https://twitter.com/compose/tweet")
         try:
             await self._wait('[data-testid="tweetTextarea_0"]', timeout=8000)
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if "login" in self.page.url:
-                raise Exception(
+                raise AdapterError(
                     "Login required for Twitter. Please log in manually in Chrome."
                 )
-            raise Exception("Failed to open Twitter composer. The UI may have changed.")
+            raise AdapterError(
+                "Failed to open Twitter composer. The UI may have changed."
+            )
 
     async def upload_media(self, media_paths: list):
         if not media_paths:
@@ -86,7 +88,7 @@ class TwitterAdapter(BaseAdapter):
         await self._click('[data-testid="caret"]')
         edit_btn = self.page.locator('menuitem:has-text("Edit")').first
         if await edit_btn.count() == 0:
-            raise Exception(
+            raise AdapterError(
                 "Edit not available — account may not have Twitter Blue/Premium."
             )
         await edit_btn.click()
@@ -124,8 +126,8 @@ class TwitterAdapter(BaseAdapter):
                         "timestamp": ts,
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def pin_post(self, post_url: str):
@@ -139,7 +141,7 @@ class TwitterAdapter(BaseAdapter):
             await confirm.click()
         await asyncio.sleep(2)
 
-    async def save_draft(self, content: str, media_paths: Optional[list] = None):
+    async def save_draft(self, content: str, media_paths: list | None = None):
         print("Twitter: Saving draft...")
         await self._goto("https://twitter.com/compose/tweet")
         await self._wait('[data-testid="tweetTextarea_0"]')
@@ -181,8 +183,8 @@ class TwitterAdapter(BaseAdapter):
                         "content": text[:200],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return comments
 
     async def reply_to_comment(self, post_url: str, comment_id: str, text: str):
@@ -192,7 +194,7 @@ class TwitterAdapter(BaseAdapter):
         tweets = await self.page.locator('[data-testid="tweet"]').all()
         idx = int(comment_id) + 1
         if idx >= len(tweets):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await tweets[idx].locator('[data-testid="reply"]').click()
         textbox = self.page.locator('[data-testid="tweetTextarea_0"]').first
         await textbox.wait_for(state="visible", timeout=5000)
@@ -207,7 +209,7 @@ class TwitterAdapter(BaseAdapter):
         tweets = await self.page.locator('[data-testid="tweet"]').all()
         idx = int(comment_id) + 1
         if idx >= len(tweets):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await tweets[idx].locator('[data-testid="caret"]').click()
         hide_btn = self.page.locator(
             'menuitem:has-text("Hide reply"), menuitem:has-text("Delete")'
@@ -225,7 +227,7 @@ class TwitterAdapter(BaseAdapter):
         await self._wait('[data-testid="tweet"]', timeout=10000)
         like_btn = self.page.locator('[data-testid="like"]').first
         if await like_btn.count() == 0:
-            raise Exception("Like button not found — post may already be liked.")
+            raise AdapterError("Like button not found — post may already be liked.")
         await like_btn.click()
         await asyncio.sleep(1)
 
@@ -235,7 +237,7 @@ class TwitterAdapter(BaseAdapter):
         await self._wait('[data-testid="tweet"]', timeout=10000)
         unlike_btn = self.page.locator('[data-testid="unlike"]').first
         if await unlike_btn.count() == 0:
-            raise Exception("Unlike button not found — post may not be liked.")
+            raise AdapterError("Unlike button not found — post may not be liked.")
         await unlike_btn.click()
         await asyncio.sleep(1)
 
@@ -277,8 +279,8 @@ class TwitterAdapter(BaseAdapter):
                 results.append(
                     {"url": f"https://twitter.com{href}", "snippet": text[:120]}
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -297,8 +299,8 @@ class TwitterAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"topic": text.strip().split("\n")[0]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -404,7 +406,7 @@ class TwitterAdapter(BaseAdapter):
                 el = tweet.locator(f'[data-testid="{testid}"] span').first
                 val = await el.inner_text() if await el.count() > 0 else "0"
                 result[metric] = val.strip()
-            except Exception:
+            except DOM_ITEM_ERRORS:
                 result[metric] = "?"
         return result
 
@@ -427,8 +429,8 @@ class TwitterAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -447,13 +449,13 @@ class TwitterAdapter(BaseAdapter):
                 results.append(
                     {"url": f"https://twitter.com{href}", "content": text[:200]}
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── Special Formats ─────────────────────────────────────────────────────
 
-    async def post_thread(self, tweets: list, media_paths: Optional[list] = None):
+    async def post_thread(self, tweets: list, media_paths: list | None = None):
         """Post a Twitter thread (series of connected tweets)."""
         if not tweets:
             return

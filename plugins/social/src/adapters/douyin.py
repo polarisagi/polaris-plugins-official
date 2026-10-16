@@ -1,8 +1,9 @@
 """Douyin (抖音) adapter — video-first Chinese platform."""
 
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class DouyinAdapter(BaseAdapter):
@@ -21,7 +22,7 @@ class DouyinAdapter(BaseAdapter):
         media = split_by_type(media_paths)
         files = media["videos"] or media["images"]
         if not files:
-            raise Exception("Douyin requires at least one video or image file.")
+            raise AdapterError("Douyin requires at least one video or image file.")
         file_input = self.page.locator(
             'input[type="file"][accept*="video"], input[type="file"][accept*="image"]'
         ).first
@@ -81,7 +82,7 @@ class DouyinAdapter(BaseAdapter):
             await self.page.locator('button:has-text("发送")').click()
             await asyncio.sleep(2)
         else:
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
 
     async def delete_comment(self, post_url: str, comment_id: str):
         print(f"Douyin: Deleting comment {comment_id} on {post_url}...")
@@ -99,7 +100,7 @@ class DouyinAdapter(BaseAdapter):
             await self.page.locator('button:has-text("确定")').first.click()
             await asyncio.sleep(2)
         else:
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
 
     async def search_posts(self, query: str) -> list[dict]:
         print(f"Douyin: Searching for {query}...")
@@ -116,8 +117,8 @@ class DouyinAdapter(BaseAdapter):
                 if link and link.startswith("//"):
                     link = "https:" + link
                 results.append({"url": link, "snippet": title[:100]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -179,8 +180,8 @@ class DouyinAdapter(BaseAdapter):
                 results.append(
                     {"url": f"https://www.douyin.com{link}", "snippet": title[:100]}
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_trending_topics(self, limit: int = 10) -> list:
@@ -194,8 +195,8 @@ class DouyinAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"topic": text.strip().split("\n")[0]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_account_analytics(self) -> dict:

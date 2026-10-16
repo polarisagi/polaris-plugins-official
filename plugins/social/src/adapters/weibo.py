@@ -1,8 +1,9 @@
 """Weibo adapter."""
 
 import asyncio
-from .base_adapter import BaseAdapter
+
 from ..utils.media import split_by_type
+from .base_adapter import DOM_ITEM_ERRORS, AdapterError, BaseAdapter, logger
 
 
 class WeiboAdapter(BaseAdapter):
@@ -21,15 +22,17 @@ class WeiboAdapter(BaseAdapter):
                 timeout=10000,
                 state="visible",
             )
-        except Exception:
+        except DOM_ITEM_ERRORS:
             if (
                 "login" in self.page.url
                 or await self.page.locator('a[action-type="login"]').count() > 0
             ):
-                raise Exception(
+                raise AdapterError(
                     "Login required for Weibo. Please login manually in Chrome first."
                 )
-            raise Exception("Failed to load Weibo composer. The UI might have changed.")
+            raise AdapterError(
+                "Failed to load Weibo composer. The UI might have changed."
+            )
 
     async def upload_media(self, media_paths: list):
         if not media_paths:
@@ -104,8 +107,8 @@ class WeiboAdapter(BaseAdapter):
                         "snippet": text[:150],
                     }
                 )
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def edit_post(self, post_url: str, new_content: str):
@@ -131,7 +134,7 @@ class WeiboAdapter(BaseAdapter):
         items = await self.page.locator(".list_li").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].locator('a:has-text("回复")').first.click()
         input_box = items[idx].locator("textarea").first
         await input_box.wait_for(state="visible", timeout=5000)
@@ -145,7 +148,7 @@ class WeiboAdapter(BaseAdapter):
         items = await self.page.locator(".list_li").all()
         idx = int(comment_id)
         if idx >= len(items):
-            raise Exception("Comment ID not found.")
+            raise AdapterError("Comment ID not found.")
         await items[idx].hover()
         delete_btn = items[idx].locator('a:has-text("删除")').first
         await delete_btn.wait_for(state="visible", timeout=5000)
@@ -225,8 +228,8 @@ class WeiboAdapter(BaseAdapter):
                     link = "https:" + link
                 title = await note.locator(".txt").first.inner_text()
                 results.append({"url": link, "snippet": title[:100]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def read_post(self, post_url: str) -> str:
@@ -246,8 +249,8 @@ class WeiboAdapter(BaseAdapter):
                 topic = await text_el.inner_text()
                 href = await text_el.get_attribute("href")
                 results.append({"topic": topic.strip(), "url": href or ""})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     # ─── User Operations ─────────────────────────────────────────────────────
@@ -384,8 +387,8 @@ class WeiboAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
 
     async def get_mentions(self, limit: int = 20) -> list:
@@ -398,6 +401,6 @@ class WeiboAdapter(BaseAdapter):
             try:
                 text = await item.inner_text()
                 results.append({"content": text[:150]})
-            except Exception:
-                pass
+            except DOM_ITEM_ERRORS as e:
+                logger.debug("%s: 跳过可选步骤: %s", type(self).__name__, e)
         return results
