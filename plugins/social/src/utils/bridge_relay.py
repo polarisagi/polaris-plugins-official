@@ -323,6 +323,10 @@ class BridgeRelay:
             await ws.send(json.dumps({"type": "hello_ok", "client": "browser_use"}))
             logger.info("Polaris Browser Bridge 扩展握手成功 (port=%d)", self.ext_port)
             return True
+        except ConnectionClosed as e:
+            # 扩展在握手中途断开（如令牌已轮换、旧连接被替换）：属正常重连流程，无需关闭或告警
+            logger.debug("扩展握手中途断开: %s", e)
+            return False
         except (
             OSError,
             RuntimeError,

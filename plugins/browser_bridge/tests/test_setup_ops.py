@@ -197,7 +197,10 @@ def test_shipped_extension_matches_constants():
     ext = setup_ops.extension_source_dir()
     manifest = json.loads((ext / "manifest.json").read_text(encoding="utf-8"))
     assert "nativeMessaging" in manifest["permissions"]
-    assert manifest["version"] == "1.2.0"
+    # 不写死版本：只要求不低于新协议（双向 HMAC + 自动配对）所需的最低版本
+    assert setup_ops._version_tuple(manifest["version"]) >= setup_ops._version_tuple(
+        setup_ops.MIN_PAIRED_EXT_VERSION
+    )
     assert f'const NATIVE_HOST = "{NATIVE_HOST_NAME}";' in (ext / "sw.js").read_text(
         encoding="utf-8"
     )

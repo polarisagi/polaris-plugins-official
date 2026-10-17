@@ -457,7 +457,10 @@ async function handleRelayCommand(port, connState, msg) {
     }));
   } catch (err) {
     const cdpMethod = method === "cdp" && params ? params.method : "";
-    log("error", `命令失败 ${method}${cdpMethod ? " " + cdpMethod : ""} (+${ms()}ms): ${err.message || err}`);
+    const errText = String(err.message || err);
+    // 子会话（iframe / worker）在命令到达前已关闭属正常竞争：Playwright 会忽略该错误，只记 debug 级
+    const level = errText.includes("Session with given id not found") ? "debug" : "error";
+    log(level, `命令失败 ${method}${cdpMethod ? " " + cdpMethod : ""} (+${ms()}ms): ${errText}`);
     connState.ws.send(JSON.stringify({
       id,
       error: { message: err.message || String(err) }
