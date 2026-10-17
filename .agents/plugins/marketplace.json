@@ -19,6 +19,20 @@
       "category": "Productivity"
     },
     {
+      "name": "polaris-browser-bridge",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/polarisagi/polaris-plugins-official.git",
+        "path": "./plugins/browser_bridge",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
       "name": "polaris-browser-use",
       "source": {
         "source": "git-subdir",
@@ -30,7 +44,13 @@
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
-      "category": "Productivity"
+      "category": "Productivity",
+      "dependencies": [
+        {
+          "name": "polaris-browser-bridge",
+          "version": "^1.0.0"
+        }
+      ]
     },
     {
       "name": "polaris-knowledge-base",
@@ -58,7 +78,13 @@
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
-      "category": "Social"
+      "category": "Social",
+      "dependencies": [
+        {
+          "name": "polaris-browser-bridge",
+          "version": "^1.0.0"
+        }
+      ]
     }
   ]
 }

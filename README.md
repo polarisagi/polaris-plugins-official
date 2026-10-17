@@ -27,6 +27,13 @@
 - **Security**: Strict app blacklisting/whitelisting interceptor (`config.json`).
 - **Macro Adapters**: Specialized automation handlers to bypass complex GUI limitations (e.g., WeChat clipboard injection, smart UI OCR drift recovery).
 
+### 2a. [Browser Bridge (Python)](plugins/browser_bridge)
+
+**Version**: `v1.0.0`  
+**Capabilities**: Sole source of the Polaris Browser Bridge Chrome extension; one-click setup (`bridge_setup`), Chrome Native Messaging auto-pairing (no token copy/paste), status and token rotation, with an MCP Apps setup card  
+**Powered by**: Python, FastMCP and `uv`  
+**Highlights**: `browser_use` and `social` depend on it; mutual HMAC handshake (the token never travels over the wire)
+
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
 **Version**: `v2.1.0`  
@@ -103,6 +110,10 @@ plugins/
     .mcp.json                    # MCP server config (command: uv)
     src/main.py                  # Python MCP server
     pyproject.toml
+  browser_bridge/
+    .codex-plugin/plugin.json
+    extension/                   # Chrome extension (single source)
+    src/main.py
   browser_use/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP server config (command: uv)

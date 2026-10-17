@@ -13,6 +13,7 @@
 ```bash
 uv run plugins/computer_use/src/main.py
 uv run plugins/browser_use/src/main.py
+(cd plugins/browser_bridge && uv run python -m src.main)
 (cd plugins/knowledge_base && uv run python -m src.main)
 uv run plugins/system_info/src/main.py
 (cd plugins/social && uv run python -m src.main)
@@ -60,7 +61,7 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 **MCP 实现方式：**
 - 手动 stdio 循环（`sys.stdin`）：`computer_use`、`system_info`
-- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_use`、`social`、`knowledge_base`
+- 官方 `FastMCP` SDK（推荐，新插件应默认使用）：`browser_bridge`、`browser_use`、`social`、`knowledge_base`
 
 ---
 
@@ -103,7 +104,14 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 - `auto`（默认）裁决顺序：Polaris Browser Bridge 扩展 → 日常 Chrome CDP → 托管 profile。扩展曾握手成功（`~/.config/polaris-plugins/browser/bridge_ext_seen`）时 auto 模式会等扩展 35 秒，避免回落到需要人工点「允许」的 CDP。
 - 驱动默认值：`cdp` / `extension` 后端用 **playwright**（patchright 附着日常 Chrome 时 `connect_over_cdp` 会卡死），`managed` 用 patchright；`POLARIS_BROWSER_DRIVER` 可覆盖。两套驱动异常类互不继承，捕获时统一用 `browser_hub.PW_ERRORS`，不要直接 `except PwError`。
 - CDP 后端：macOS 上读 `DevToolsActivePort` 需给启动插件的 App（终端 / Claude / Polaris）授予「完全磁盘访问权限」；每次新连接 Chrome 都会弹「允许远程调试」，读工具（`unattended=True`）不会主动触发该弹窗。日常 Chrome 中若有冻结/卡死的标签页，Playwright 初始化全部标签时会超时。
-- 扩展（`plugins/browser_use/extension/`）：中继透传 CDP 时，扩展必须上报 Chrome 真实的 `targetId`（Playwright 依赖「主框架 id == targetId」）；透传命令的应答须在扩展读循环中直接回写，以保持「应答先于其后事件」的顺序。扩展日志回传到 `~/.config/polaris-plugins/browser/bridge_ext.log`；修改扩展代码后执行 `cd plugins/social && uv run python scripts/bridge_reload.py` 即可让已配对扩展从磁盘重载。
+- 扩展（唯一源码在 `plugins/browser_bridge/extension/`，见下节 browser_bridge）：中继透传 CDP 时，扩展必须上报 Chrome 真实的 `targetId`（Playwright 依赖「主框架 id == targetId」）；透传命令的应答须在扩展读循环中直接回写，以保持「应答先于其后事件」的顺序。扩展日志回传到 `~/.config/polaris-plugins/browser/bridge_ext.log`；修改扩展代码后先同步到稳定目录（调用 `bridge_setup`，或见 browser_bridge README 的开发者一节），再执行 `cd plugins/social && uv run python scripts/bridge_reload.py` 让已配对扩展从磁盘重载。
+- 握手为双向 HMAC（`hello_init`/`challenge`/`hello`/`hello_ok`，实现在 `bridge_relay.py`，两份副本逐字节一致）；令牌**绝不**出现在错误信息、`browser_status` 或握手线路上。中继握手成功时写 `CFG/bridge_last_handshake.json`，令牌文件被轮换后中继重新读取。
+
+---
+
+### browser_bridge — 浏览器扩展设置（v1.0.0，MCP 服务器 `polaris-browser-bridge`）
+
+`FastMCP` 实现，是 Chrome 扩展 Polaris Browser Bridge 的**唯一源码**（`extension/`，v1.2.0）与设置入口；`browser_use`、`social` 在 `.claude-plugin/plugin.json` 与市场条目里声明依赖它（Polaris 只从 Claude 格式清单与市场条目读取 `dependencies`，`.codex-plugin/plugin.json` 里的会被忽略）。工具：`bridge_setup`（令牌 + 同步扩展到稳定目录 `~/.config/polaris-plugins/browser/extension/` + 注册 Native Messaging 宿主 `online.polarisagi.bridge`，声明 MCP Apps 卡片 `ui://polaris-browser-bridge/setup.html`）、`bridge_open_chrome_extensions`、`bridge_status`、`bridge_rotate_token`。自动配对：扩展 `chrome.runtime.sendNativeMessage` → `src/native_host.py`（仅标准库，被复制到 `native-host/` 并由写死解释器绝对路径的包装脚本启动）返回令牌；失败回退手动粘贴。本进程不运行中继，连接状态读 `bridge_last_handshake.json`。签名私钥 `extension-signing-key.pem` 在 `~/.config/polaris-plugins/browser/`，不得入库。`bridge_const.py` 在三个插件各有一份，需逐字节一致（`check.sh` 校验）。
 
 ---
 

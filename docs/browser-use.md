@@ -6,7 +6,7 @@
 
 - MCP 服务器名：`polaris-browser-use`（FastMCP + Patchright，Python ≥ 3.14）
 - 入口：`cd plugins/browser_use && uv run python -m src.main`
-- 源码：`plugins/browser_use/src/{main,tools_browser,browser_hub,bridge_relay,bridge_const,cfg,extract,snapshot_js}.py`、`plugins/browser_use/extension/*`
+- 源码：`plugins/browser_use/src/{main,tools_browser,browser_hub,bridge_relay,bridge_const,cfg,extract,snapshot_js}.py`；扩展与设置见 `plugins/browser_bridge/`（`extension/*`）
 
 ## 1. 三后端对比
 
@@ -33,17 +33,18 @@
 
 ## 2. 安装 Polaris Browser Bridge 扩展并配对
 
-扩展是纯 JS 的 MV3 扩展（权限：`debugger`、`tabs`、`storage`、`alarms`），随插件放在 `plugins/browser_use/extension/`，用“加载已解压的扩展程序”安装，一次性操作。
+扩展是纯 JS 的 MV3 扩展（权限：`debugger`、`tabs`、`storage`、`alarms`、`nativeMessaging`），**唯一源码在 `plugins/browser_bridge/extension/`**，设置与配对由配套插件 `polaris-browser-bridge`（`plugins/browser_bridge/`，详见其 README）负责；`browser_use` 与 `social` 在清单中依赖它。
 
-1. **取扩展目录与令牌**：先让 Polaris 调用 `browser_status`（会启动本进程的中继并生成令牌）。返回里的 `extension_dir` 是扩展目录的绝对路径，`bridge_token` 是配对令牌（同时保存在 `~/.config/polaris-plugins/browser/bridge_token`，权限 `0600`）。
-2. **加载扩展**：Chrome 地址栏打开 `chrome://extensions` → 右上角开启「开发者模式」→「加载已解压的扩展程序」→ 选择 `extension_dir`。扩展 ID 由 manifest 里的固定公钥决定，应为 `ccdonkdehfibjcejkfjoicdklfdffjeh`（中继只接受这个来源）。
-3. **配对**：点击工具栏上的 Polaris Browser Bridge 图标打开选项页，粘贴令牌并保存。选项页会显示当前连上的本地中继（端口与活动标签数）。
-4. **验证**：再次调用 `browser_status`，`backend` 应为 `extension`，`connected` 为 `true`。若仍不是，等 1 分钟（扩展按分钟重连）或显式设置 `POLARIS_BROWSER_BACKEND=extension` 后重启插件。
+1. **一键设置**：对 Polaris 说「设置浏览器扩展」或调用 `bridge_setup`。它生成令牌、把扩展同步到稳定目录 `~/.config/polaris-plugins/browser/extension/`、注册 Chrome Native Messaging 宿主 `online.polarisagi.bridge`。
+2. **加载扩展**：调用 `bridge_open_chrome_extensions`（macOS 会打开 `chrome://extensions` 并在 Finder 定位目录）→ 开启「开发者模式」→「加载已解压的扩展程序」→ 选择上述稳定目录。扩展 ID 由 manifest 里的固定公钥决定，应为 `ccdonkdehfibjcejkfjoicdklfdffjeh`（中继只接受这个来源）。
+3. **自动配对**：扩展经 Native Messaging 向本机宿主取令牌（`allowed_origins` 只含该扩展 ID），**无需粘贴**。宿主不可用时回退到设置页手动粘贴令牌，设置页会显示配对来源（自动配对 / 手动令牌）。
+4. **验证**：`bridge_status` 的 `connection.connected` 为 `true`；`browser_status` 的 `backend` 应为 `extension`。若仍不是，等 1 分钟（扩展按分钟重连）或显式设置 `POLARIS_BROWSER_BACKEND=extension` 后重启插件。
 
 说明与注意：
 
-- 令牌错误时中继以 4401 关闭连接，扩展按分钟重试；令牌更换后需在选项页重新粘贴。
-- `browser_status` 的返回值包含 `bridge_token` 明文，它会出现在对话上下文里。令牌只对本机回环的中继有效，但请不要把含令牌的对话记录外发。
+- 握手为双向 HMAC（`hello_init` → `challenge` → `hello(proof)` → `hello_ok`），令牌不在线路上传输；令牌被拒时中继以 4401 关闭连接，旧版扩展以 4426 拒绝并提示升级。自动配对的扩展会自行重取令牌；令牌文件被轮换后中继在下次握手/心跳重新读取。
+- `browser_status` / `bridge_status` **不再返回令牌明文**，错误信息也不含令牌。令牌只在 `~/.config/polaris-plugins/browser/bridge_token`（`0600`）。
+- 中继握手成功时写 `bridge_last_handshake.json`（时间、扩展版本、端口、pid），`bridge_status` 据此判断是否已连接。
 - 被附着的标签页顶部会出现 Chrome 的调试横幅，这是浏览器强制的提示，无法关闭。
 - 扩展只对**它自己创建**的标签发送 CDP 命令；对不属于本连接的标签直接返回 `Tab <id> is not owned by this connection`。
 - 扩展与中继之间的端口是 `127.0.0.1:18790–18799` 中第一个空闲端口；`browser_use` 与 `social` 同时运行会各占一个。端口全部被占用时报 `attach_failed`，见 [troubleshooting.md](troubleshooting.md)。
@@ -74,6 +75,10 @@
 | 路径 | 内容 |
 |------|------|
 | `bridge_token` | 扩展配对令牌（`0600`） |
+| `extension/` | `bridge_setup` 同步出的稳定扩展目录（在 Chrome 里加载它） |
+| `native-host/` | Native Messaging 宿主脚本与包装脚本 |
+| `bridge_last_handshake.json` | 中继最近一次握手 / 心跳状态 |
+| `extension-signing-key.pem` | 扩展签名私钥（决定扩展 ID，勿入库勿外传） |
 | `endpoint.json` | `managed` 后端记录的 Chrome 进程与调试地址，用于复用 |
 | `profiles/<profile>/` | `managed` 的专用用户数据目录 |
 | `recipes/` | 用户自定义 / 覆盖的站点配方（`social` 读取） |
@@ -92,7 +97,7 @@
 | `browser_scroll` | `direction="down"`（或 `up`）、`times=1`（限制在 1–10） | `scroll_y`、`at_bottom`；每次滚 600 像素 |
 | `browser_extract` | `container`（CSS）、`fields`（`{字段名: "css" 或 "css@属性"}`）、`max_items=50` | `items`、`count`；以 `/`、`./`、`../` 开头的值会补全为绝对 URL；选择器非法返回 `invalid_args` |
 | `browser_tabs` | `action="list"`（`list` \| `switch` \| `close`）、`tab_id=""` | `list`：`tabs[{tab_id,url,title}]`、`count`；`switch`：`active_tab`、`url`；`close`：`closed_tab`。`switch` / `close` 必须给 `tab_id` |
-| `browser_status` | 无 | `backend`、`reason`、`connected`、`driver`、`profile`、`owned_tabs`、`fingerprint_risk`、`sites`、`extension_dir`、`bridge_token`、`bridge_token_path`、`pair_instruction` |
+| `browser_status` | 无 | `backend`、`reason`、`connected`、`driver`、`profile`、`owned_tabs`、`fingerprint_risk`、`sites`、`extension_dir`、`extension_installed`、`bridge_token_ready`、`pair_instruction` |
 
 字段说明：
 

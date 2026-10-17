@@ -119,7 +119,7 @@ sequenceDiagram
 
 | ADR-0114 条目 | 本仓库落点 |
 |---------------|------------|
-| 决策四：三后端、只操作自建窗口、marker URL、不读 cookie、不自动登录 | `browser_use/src/browser_hub.py`、`bridge_relay.py`、`extension/` |
+| 决策四：三后端、只操作自建窗口、marker URL、不读 cookie、不自动登录 | `browser_use/src/browser_hub.py`、`bridge_relay.py`、`browser_bridge/extension/` |
 | 决策四：站点配方、XHR 优先 CSS 兜底、共享限速、风控熔断 | `social/recipes/*.toml`、`social/src/harvest/`、`social/src/ratelimit.py` |
 | 决策八：插件分层（`browser_use` 平台无关；`social` 读写同处；`knowledge_base` 为 Vault） | 三个插件的现状 |
 | 决策一：`tool` 步骤允许集与写工具运行期审批 | 内核；插件通过 `readOnlyHint` 标注参与判定 |

@@ -19,8 +19,8 @@
 | 自己用 `--remote-debugging-port=9222` 启动日常 Chrome，端口不开 | Chrome 136+ 对**默认用户目录**忽略 `--remote-debugging-port`（ADR-0114 F1） | 这正是本仓库采用扩展桥接与独立 profile 的原因：改用扩展或 `chrome://inspect` 开关；托管后端用的是专用目录 `--user-data-dir`，不受影响 |
 | `cdp`：Chrome 弹出「允许远程调试」；超过 60 秒没点 → `attach_failed` | 新版 Chrome 的 `chrome://inspect` 开关对**每条新连接**都弹窗，没有“始终允许” | 在 60 秒内点「允许」；每个插件进程只建一条长连接。需要无人值守请换扩展 |
 | `needs_user_approval` | 无人值守的调用（`social_*` 读工具、管线）遇到尚未连接的 `cdp` 后端；插件有意不主动发起会弹窗的连接，避免半夜堆积弹窗 | 先手动触发一次连接并点「允许」，或安装扩展、改用 `managed` |
-| 扩展没配对：`attach_failed`，消息“未检测到 Polaris Browser Bridge 扩展连接……” | 扩展没加载、令牌没粘贴或已过期、Chrome 没开、或扩展还没来得及重连（它每 1 分钟重新探测一次端口） | ① `chrome://extensions` 确认扩展已启用，ID 为 `ccdonkdehfibjcejkfjoicdklfdffjeh`；② 选项页重新粘贴 `browser_status` 返回的令牌（文件 `~/.config/polaris-plugins/browser/bridge_token`）；③ 选项页应能看到本地中继（端口 + 活动标签数），没有就等 1 分钟或重启插件进程 |
-| 中继日志“拒绝非法扩展 Origin” | 加载的扩展 ID 不是预期值（例如换了 manifest 里的 `key`） | 使用仓库自带的 `extension/` 目录，不要改 manifest 的 `key` |
+| 扩展没配对：`attach_failed`，消息“未检测到 Polaris Browser Bridge 扩展连接……” | 扩展没加载、令牌没粘贴或已过期、Chrome 没开、或扩展还没来得及重连（它每 1 分钟重新探测一次端口） | ① `chrome://extensions` 确认扩展已启用，ID 为 `ccdonkdehfibjcejkfjoicdklfdffjeh`；② 运行 `bridge_setup`（Polaris 里说「设置浏览器扩展」）并确认 `bridge_status`；扩展设置页点「重新自动配对」（仍失败再手动粘贴 `bridge_token` 文件中的令牌）；③ 选项页应能看到本地中继（端口 + 活动标签数），没有就等 1 分钟或重启插件进程 |
+| 中继日志“拒绝非法扩展 Origin” | 加载的扩展 ID 不是预期值（例如换了 manifest 里的 `key`） | 使用 `bridge_setup` 同步出的 `~/.config/polaris-plugins/browser/extension/`（源码在 `plugins/browser_bridge/extension/`），不要改 manifest 的 `key` |
 | `attach_failed`：“未能绑定 18790-18799 中任一空闲端口” | 10 个中继端口全被占用，通常是残留的插件进程 | `lsof -nP -iTCP:18790-18799 -sTCP:LISTEN` 找出占用者，结束多余的插件进程后重试 |
 | 选项页里显示的客户端名都是 `browser_use` | `social` 带的是同一份中继代码，握手应答里固定写 `browser_use` | 只是显示名，不影响功能；用端口号区分两个插件 |
 | 标签页顶部有“Polaris Browser Bridge 已开始调试此浏览器”横幅 | Chrome 对 `chrome.debugger` 附着的强制提示，无法关闭 | 正常现象；空闲释放后是否消失以实际为准 |
@@ -73,4 +73,4 @@
 
 ## 6. 仍然解决不了
 
-收集这些信息再反馈：`browser_status` 的输出（**抹掉其中的 `bridge_token`**）、`social_platforms` 的 `recipe_errors`、出错工具的 `error.code` 与 `message`、操作系统与 Chrome 版本、`uv --version`。
+收集这些信息再反馈：`browser_status` 的输出（确认其中没有任何令牌（正常情况下不含））、`social_platforms` 的 `recipe_errors`、出错工具的 `error.code` 与 `message`、操作系统与 Chrome 版本、`uv --version`。

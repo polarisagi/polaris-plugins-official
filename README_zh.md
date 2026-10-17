@@ -27,6 +27,13 @@
 - **安全沙盒**：内置 `config.json` 应用黑白名单拦截器，严格阻断对密码管理器等敏感软件的越权访问。
 - **高级宏指令适配器**：针对复杂 GUI 设计的专项操作宏（如微信剪贴板高速防串键输入、智能 UI 截图漂移纠正重置）。
 
+### 2a. [Browser Bridge (Python)](plugins/browser_bridge)
+
+**版本**：`v1.0.0`  
+**能力**：Polaris Browser Bridge Chrome 扩展的唯一源码；一键设置（`bridge_setup`）、Chrome Native Messaging 自动配对令牌（无需复制粘贴）、状态查看与令牌轮换，附 MCP Apps 设置卡片  
+**底层驱动**：Python、FastMCP 及 `uv`  
+**亮点**：`browser_use` 与 `social` 依赖本插件；双向 HMAC 握手，令牌不上线路
+
 ### 2. [Browser Use (Python)](plugins/browser_use)
 
 **版本**：`v2.1.0`  
@@ -103,6 +110,10 @@ plugins/
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py                  # Python MCP 服务端
     pyproject.toml
+  browser_bridge/
+    .codex-plugin/plugin.json
+    extension/                   # Chrome 扩展（唯一源码）
+    src/main.py
   browser_use/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP 配置（command: uv）

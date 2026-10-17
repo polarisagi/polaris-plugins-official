@@ -10,17 +10,20 @@
 polaris-plugins-official/
 ├── CLAUDE.md, README.md, README_zh.md, LICENSE
 ├── check.sh                       # 全量检测脚本（见第 2 节）
-├── scripts/ext_id.py              # 由 extension/key.pem 计算扩展公钥与扩展 ID（key.pem 已被 .gitignore 忽略）
+├── scripts/ext_id.py              # 由签名私钥（默认 ~/.config/polaris-plugins/browser/extension-signing-key.pem）计算扩展公钥与扩展 ID
 ├── .agents/plugins/marketplace.json   # Codex 市场索引
 ├── .github/workflows/release.yml  # 推送 v* tag 时生成 GitHub Release
 ├── docs/                          # 本目录
 └── plugins/
     ├── browser_use/               # v2.1.0  polaris-browser-use
     │   ├── .codex-plugin/plugin.json, .mcp.json, pyproject.toml, uv.lock
-    │   ├── extension/             # Polaris Browser Bridge（MV3：manifest.json, sw.js, options.html/js）
     │   ├── skills/browser_use/SKILL.md
     │   ├── src/                   # main, tools_browser, browser_hub, bridge_relay, bridge_const, cfg, extract, snapshot_js
     │   └── tests/                 # test_browser_hub, test_bridge_relay, test_extract
+    ├── browser_bridge/            # v1.0.0  polaris-browser-bridge（扩展唯一源码 + 一键设置 + Native Messaging 自动配对）
+    │   ├── extension/             # Polaris Browser Bridge（MV3：manifest.json, sw.js, options.html/js）
+    │   ├── src/                   # main, setup_ops, native_host, paths, bridge_const, ui/setup.html（MCP Apps 卡片）
+    │   └── tests/                 # test_native_host, test_setup_ops, test_main
     ├── social/                    # v3.0.0  polaris-social
     │   ├── recipes/               # zhihu, x, weibo, xiaohongshu, _example（TOML）
     │   ├── scripts/live_smoke.py  # 真机冒烟（手工，不进 CI）
@@ -146,7 +149,7 @@ cd plugins/knowledge_base    && uv run --with pytest pytest -q
 
 - [ ] 改 `browser_use/src/` 里的源头文件 → 复制到 `social/src/utils/` → 跑完整 `./check.sh`。
 - [ ] 保持隔离不变量：只操作自建窗口 / 标签、按 marker URL 定位、不读 cookie、不自动登录。
-- [ ] 改了扩展（`extension/`）或常量里的端口 / ID 时，同步 [browser-use.md](browser-use.md) 与 README。
+- [ ] 改了扩展（`browser_bridge/extension/`）或常量里的端口 / ID 时，同步 [browser-use.md](browser-use.md) 与 README。
 
 ## 5. 清单目录 `.codex-plugin`
 

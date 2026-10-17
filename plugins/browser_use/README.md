@@ -27,14 +27,8 @@ Polaris 官方通用浏览器自动化插件（打开、正文读取、快照、
 
 为了彻底解决日常 Chrome 每次连接都需要用户在弹窗中点击「允许」的问题，推荐安装官方配套的轻量级 MV3 扩展 **Polaris Browser Bridge**（纯 JS，无任何外部构建依赖与敏感权限）：
 
-1. **加载已解压的扩展程序**：
-   - 打开日常使用的 Chrome 浏览器，在地址栏输入 `chrome://extensions` 并回车；
-   - 开启右上角的 **「开发者模式 (Developer mode)」**；
-   - 点击左上角的 **「加载已解压的扩展程序 (Load unpacked)」**；
-   - 选择本插件的 `extension` 目录（可调用 `browser_status` 工具，返回结果中的 `extension_dir` 即为完整绝对路径）。
-2. **配对授权**：
-   - 对 Polaris 说「查看浏览器状态」或调用 `browser_status`，复制返回的 `bridge_token`（同时保存在 `~/.config/polaris-plugins/browser/bridge_token`）；
-   - 点击 Chrome 工具栏上的 Polaris Browser Bridge 图标打开选项页，粘贴配对令牌并点击保存。
+1. **一键设置**：扩展与自动配对由配套插件 **polaris-browser-bridge** 提供（本插件已在清单中依赖它）。对 Polaris 说「设置浏览器扩展」或调用 `bridge_setup`，它会准备扩展目录 `~/.config/polaris-plugins/browser/extension/` 并注册 Chrome 自动配对宿主。
+2. **加载扩展并自动配对**：调用 `bridge_open_chrome_extensions`（macOS）打开 `chrome://extensions`，开启「开发者模式」→「加载已解压的扩展程序」，选择上述目录。扩展会经 Native Messaging 自动获取令牌，**无需复制粘贴令牌**。详见 [browser_bridge/README.md](../browser_bridge/README.md)。
 3. **验证生效**：
    - 再次调用 `browser_status`，`backend` 将显示为 `extension`。
    - **安全提示**：被附着的标签页顶部会显示 Chrome 官方强制安全横幅「Polaris Browser Bridge 已开始调试此浏览器」，空闲 10 分钟后自动释放并消失；所有操作均在独立窗口完成，不触碰任何用户已有标签页。

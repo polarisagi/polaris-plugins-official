@@ -76,7 +76,7 @@ v1 是手写的 8 个简单工具，返回字符串；v2 重写为 FastMCP + `Br
 
 v2 的结构性变化：
 
-- 三个后端 `extension` / `cdp` / `managed`（v2.0.0 起），免弹窗扩展 Polaris Browser Bridge（`extension/`，中继端口 `18790–18799`），Chrome 136+ 兼容。
+- 三个后端 `extension` / `cdp` / `managed`（v2.0.0 起），免弹窗扩展 Polaris Browser Bridge（后迁至 `browser_bridge/extension/`，中继端口 `18790–18799`），Chrome 136+ 兼容。
 - 隔离：只在 Polaris 自建窗口内操作，按 marker URL 定位，不读 cookie，不自动登录。
 - v2.1.0：去掉 `harvest*` 与限速依赖，`browser_use` 回归平台无关；移除了“猜测 9222 端点”的兜底，读不到 `DevToolsActivePort` 时给出明确指引（可设 `POLARIS_BROWSER_CDP_URL`）。
 - 启动命令：`uv run src/main.py` → `uv run python -m src.main`。
