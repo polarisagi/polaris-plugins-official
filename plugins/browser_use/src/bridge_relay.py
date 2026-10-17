@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import http
 import json
@@ -25,7 +26,13 @@ from patchright.async_api import Browser, Playwright
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
-from .bridge_const import BRIDGE_PORT_END, BRIDGE_PORT_START, EXTENSION_ID
+from .bridge_const import (
+    BRIDGE_PORT_END,
+    BRIDGE_PORT_START,
+    EXTENSION_ID,
+    HANDSHAKE_FILE,
+    HANDSHAKE_VERSION,
+)
 from .browser_hub import HubError, PlaywrightError, PwError
 from .cfg import CFG, ENV_BACKEND
 
@@ -64,6 +71,57 @@ def get_or_create_token() -> str:
     return token
 
 
+def read_token_file() -> str:
+    """读取令牌文件当前内容（不创建）；缺失或为空返回空串。"""
+    try:
+        return (CFG / "bridge_token").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def relay_proof(token: str, nonce: str) -> str:
+    """中继向扩展证明自己持有令牌：HMAC-SHA256(token, "relay:" + 扩展随机数)。"""
+    return hmac.new(
+        token.encode("utf-8"), f"relay:{nonce}".encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def ext_proof(token: str, nonce2: str, nonce: str) -> str:
+    """扩展向中继证明持有令牌：HMAC-SHA256(token, "ext:" + 中继随机数 + ":" + 扩展随机数)。
+
+    同时绑定双方随机数，抵御重放；令牌本身不再在握手中传输。
+    """
+    return hmac.new(
+        token.encode("utf-8"), f"ext:{nonce2}:{nonce}".encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def write_handshake_state(
+    connected: bool,
+    ext_version: str = "",
+    port: int = 0,
+    client: str = "browser_use",
+    last_error: str | None = None,
+) -> None:
+    """把握手/连接状态原子写入 CFG/bridge_last_handshake.json，供 browser_bridge 插件廉价读取。"""
+    data = {
+        "ts": time.time(),
+        "connected": connected,
+        "ext_version": ext_version,
+        "port": port,
+        "client": client,
+        "pid": os.getpid(),
+        "last_error": last_error,
+    }
+    target = CFG / HANDSHAKE_FILE
+    tmp = target.with_name(f".{HANDSHAKE_FILE}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError as e:
+        logger.debug("写握手状态失败: %s", e)
+
+
 EXT_SEEN_FILE = "bridge_ext_seen"
 # 扩展 service worker 休眠后由 chrome.alarms 每 30 秒唤醒重连；已配对过的环境需等满一个周期
 PAIRED_EXT_WAIT_S = 35.0
@@ -88,7 +146,10 @@ class BridgeRelay:
     """双口中继服务端：扩展 WebSocket 口 + Playwright CDP 口。"""
 
     def __init__(self, token: str | None = None) -> None:
+        # 令牌来自文件时才跟踪文件变化（轮换后重读）；测试等显式注入的令牌不被覆盖
+        self._token_from_file = token is None
         self.token = token or get_or_create_token()
+        self._token_mtime = self._token_file_mtime()
         self.ext_port: int = 0
         self.cdp_port: int = 0
         self.cdp_path = f"/devtools/browser/{uuid.uuid4()}"
@@ -114,6 +175,28 @@ class BridgeRelay:
         self._next_id: int = 1
         self._ext_connected_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task[None] | None = None
+
+    @staticmethod
+    def _token_file_mtime() -> int:
+        try:
+            return (CFG / "bridge_token").stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    def refresh_token(self) -> bool:
+        """令牌文件被轮换后重新读取；返回令牌是否发生变化。"""
+        if not self._token_from_file:
+            return False
+        mtime = self._token_file_mtime()
+        if mtime == self._token_mtime:
+            return False
+        self._token_mtime = mtime
+        new = read_token_file()
+        if new and not hmac.compare_digest(new, self.token):
+            self.token = new
+            logger.info("检测到配对令牌已轮换，中继已重新读取")
+            return True
+        return False
 
     def has_extension(self) -> bool:
         """检查扩展 WebSocket 是否已成功握手在线。"""
@@ -157,23 +240,75 @@ class BridgeRelay:
         finally:
             self._pending_ext_reqs.pop(msg_id, None)
 
+    async def _reject_ext(
+        self, ws: ServerConnection, code: int, reason: str, detail: str
+    ) -> None:
+        """拒绝扩展握手：关闭连接，并把原因落到日志与状态文件（令牌与证明绝不写入）。"""
+        logger.warning("扩展握手被拒绝: %s", detail)
+        if not self.has_extension():
+            write_handshake_state(False, port=self.ext_port, last_error=detail)
+        await ws.close(code, reason)
+
+    async def _recv_json(self, ws: ServerConnection) -> dict[str, Any]:
+        raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
+        msg = json.loads(raw)
+        if not isinstance(msg, dict):
+            raise TypeError("握手消息必须是 JSON 对象")
+        return msg
+
     async def _authenticate_ext(self, ws: ServerConnection) -> bool:
-        """执行扩展 WebSocket 握手认证。"""
+        """执行扩展 WebSocket 双向 HMAC 握手（协议版本 2，令牌不在线路上传输）。
+
+        hello_init(nonce) → challenge(relay_proof, nonce2) → hello(ext_proof) → hello_ok。
+        扩展先验证中继证明再发送自己的证明，避免把凭据交给冒充中继的本地进程。
+        """
         try:
-            raw_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            hello = json.loads(raw_msg)
-            if hello.get("type") != "hello":
-                await ws.close(4401, "Expected hello")
+            self.refresh_token()
+            init = await self._recv_json(ws)
+            if init.get("type") == "hello":
+                # 旧版扩展会在 hello 中明文携带令牌：不接受、不记录，提示升级
+                await self._reject_ext(
+                    ws,
+                    4426,
+                    "Extension outdated",
+                    "扩展版本过旧（握手协议 1），请运行 bridge_setup 并在 chrome://extensions 重新加载扩展",
+                )
+                return False
+            nonce = str(init.get("nonce") or "")
+            if init.get("type") != "hello_init" or not 16 <= len(nonce) <= 128:
+                await self._reject_ext(
+                    ws, 4401, "Expected hello_init", "握手消息格式不正确"
+                )
                 return False
 
-            client_token = str(hello.get("token") or "")
-            if not hmac.compare_digest(client_token, self.token):
-                logger.warning("扩展连接握手令牌错误，关闭连接")
-                await ws.close(4401, "Invalid token")
+            nonce2 = secrets.token_hex(16)
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "challenge",
+                        "proof": relay_proof(self.token, nonce),
+                        "nonce2": nonce2,
+                        "proto": HANDSHAKE_VERSION,
+                    }
+                )
+            )
+            hello = await self._recv_json(ws)
+            expected = ext_proof(self.token, nonce2, nonce)
+            if hello.get("type") != "hello" or not hmac.compare_digest(
+                str(hello.get("proof") or ""), expected
+            ):
+                await self._reject_ext(
+                    ws,
+                    4401,
+                    "Invalid proof",
+                    "扩展令牌证明不匹配（令牌过期或未配对）",
+                )
                 return False
 
-            self.ext_ua = str(hello.get("ua") or self.ext_ua)
-            self.ext_version = str(hello.get("ext_version") or "1.0.0")
+            self.ext_ua = str(hello.get("ua") or init.get("ua") or self.ext_ua)
+            self.ext_version = str(
+                hello.get("ext_version") or init.get("ext_version") or "1.0.0"
+            )
 
             if self.ext_conn and self.ext_conn is not ws:
                 try:
@@ -184,6 +319,7 @@ class BridgeRelay:
             self.ext_conn = ws
             self._ext_connected_event.set()
             mark_extension_seen()
+            write_handshake_state(True, self.ext_version, self.ext_port)
             await ws.send(json.dumps({"type": "hello_ok", "client": "browser_use"}))
             logger.info("Polaris Browser Bridge 扩展握手成功 (port=%d)", self.ext_port)
             return True
@@ -191,6 +327,7 @@ class BridgeRelay:
             OSError,
             RuntimeError,
             TimeoutError,
+            TypeError,
             ValueError,
             json.JSONDecodeError,
         ) as e:
@@ -335,6 +472,7 @@ class BridgeRelay:
             self._ext_connected_event.clear()
             self.current_tab_id = None
             self.cached_target_info = None
+            write_handshake_state(False, self.ext_version, self.ext_port)
 
     async def _handle_ext_ws(self, ws: ServerConnection) -> None:
         """处理扩展的 WebSocket 连接。"""
@@ -365,9 +503,17 @@ class BridgeRelay:
         """扩展心跳保活循环（每 20s 发送 ping）。"""
         while True:
             await asyncio.sleep(20)
+            if self.ext_conn and self.refresh_token():
+                # 令牌已轮换：断开旧连接，扩展重连时会取新令牌重新握手
+                try:
+                    await self.ext_conn.close(4401, "Token rotated")
+                except (OSError, RuntimeError) as e:
+                    logger.debug("轮换后关闭扩展连接异常: %s", e)
+                break
             if self.ext_conn:
                 try:
                     await self.ext_conn.send(json.dumps({"type": "ping"}))
+                    write_handshake_state(True, self.ext_version, self.ext_port)
                 except ConnectionClosed, OSError, RuntimeError:
                     self.ext_conn = None
                     self._ext_connected_event.clear()
@@ -658,11 +804,11 @@ class ExtensionBackend:
 
         ready = await self.relay.wait_for_extension(timeout=wait_s)
         if not ready:
-            token = self.relay.token
-            token_path = CFG / "bridge_token"
+            # 不在错误信息里输出令牌（会进入对话上下文）；引导用户走一键设置
             raise HubError(
                 "attach_failed",
-                f"未检测到 Polaris Browser Bridge 扩展连接。请在 Chrome 中加载扩展并在选项页粘贴配对令牌:\n{token}\n(令牌已保存于 {token_path})",
+                "未检测到 Polaris Browser Bridge 扩展连接。请对 Polaris 说「设置浏览器扩展」，"
+                "或调用 polaris-browser-bridge 插件的 bridge_setup 工具完成一键设置与自动配对。",
             )
 
         # 直接给出 ws 端点，跳过 /json/version 探测，避免不同驱动版本的探测路径差异

@@ -716,10 +716,13 @@ class BrowserHub:
         try:
             from .bridge_relay import get_or_create_token
 
-            token = get_or_create_token()
+            # 仅确保令牌存在；绝不把令牌明文放进状态（会进入对话上下文）
+            get_or_create_token()
+            token_ready = True
         except ImportError, OSError:
-            token = ""
-        ext_dir = str(Path(__file__).resolve().parent.parent / "extension")
+            token_ready = False
+        # 扩展由 polaris-browser-bridge 插件同步到此稳定目录
+        ext_dir = CFG / "extension"
         return {
             "backend": self.backend.name if self.backend else "none",
             "reason": self.backend_reason,
@@ -731,10 +734,10 @@ class BrowserHub:
             if self.backend
             else "low",
             "sites": self.get_cached_site_statuses(),
-            "extension_dir": ext_dir,
-            "bridge_token": token,
-            "bridge_token_path": str(CFG / "bridge_token"),
-            "pair_instruction": f"在 Chrome (chrome://extensions) 加载扩展并在选项页粘贴配对令牌: {token}",
+            "extension_dir": str(ext_dir),
+            "extension_installed": (ext_dir / "manifest.json").is_file(),
+            "bridge_token_ready": token_ready,
+            "pair_instruction": "扩展未连接时，请对 Polaris 说「设置浏览器扩展」，或调用 polaris-browser-bridge 插件的 bridge_setup 工具（一键设置并自动配对，无需复制令牌）。",
         }
 
     async def _idle_watchdog(self) -> None:

@@ -11,13 +11,22 @@ from __future__ import annotations
 import asyncio
 import http.client
 import json
+import os
 from typing import Any
 
 import pytest
 import websockets
-from src.bridge_const import EXTENSION_ID
-from src.bridge_relay import BridgeRelay
+from src import bridge_relay
+from src.bridge_const import EXTENSION_ID, HANDSHAKE_FILE
+from src.bridge_relay import BridgeRelay, ext_proof, relay_proof
 from websockets.asyncio.client import connect as ws_connect
+
+
+@pytest.fixture(autouse=True)
+def isolated_cfg(tmp_path, monkeypatch):
+    """把中继的运行时目录指到临时目录，测试绝不写用户真实的 ~/.config。"""
+    monkeypatch.setattr(bridge_relay, "CFG", tmp_path)
+    return tmp_path
 
 
 @pytest.fixture
@@ -28,6 +37,30 @@ async def relay():
     await r.start()
     yield r
     await r.close()
+
+
+async def client_handshake(
+    ws: Any, token: str, ext_version: str = "1.2.0", ua: str = "TestUA/1.0"
+) -> dict[str, Any]:
+    """扩展侧的 v2 握手：hello_init → 校验中继证明 → hello(proof)。返回中继的最终应答。"""
+    nonce = "a1" * 16
+    await ws.send(
+        json.dumps({"type": "hello_init", "nonce": nonce, "ext_version": ext_version})
+    )
+    challenge = json.loads(await ws.recv())
+    assert challenge["type"] == "challenge"
+    assert challenge["proof"] == relay_proof(token, nonce), "中继证明应可被扩展校验"
+    await ws.send(
+        json.dumps(
+            {
+                "type": "hello",
+                "proof": ext_proof(token, challenge["nonce2"], nonce),
+                "ext_version": ext_version,
+                "ua": ua,
+            }
+        )
+    )
+    return json.loads(await ws.recv())
 
 
 @pytest.mark.asyncio
@@ -57,19 +90,19 @@ async def test_relay_token_auth(relay: BridgeRelay):
     """测试配对令牌错误时关闭连接 (4401)，正确时成功握手。"""
     good_origin = f"chrome-extension://{EXTENSION_ID}"
 
-    # 1. 错误令牌
+    # 1. 错误令牌：中继证明与扩展证明都用错令牌 -> 证明不匹配，4401
     async with ws_connect(
         f"ws://127.0.0.1:{relay.ext_port}/bridge",
         additional_headers={"Origin": good_origin},
     ) as ws:
+        nonce = "b2" * 16
+        await ws.send(json.dumps({"type": "hello_init", "nonce": nonce}))
+        challenge = json.loads(await ws.recv())
+        wrong = "wrong_token"
+        assert challenge["proof"] != relay_proof(wrong, nonce)
         await ws.send(
             json.dumps(
-                {
-                    "type": "hello",
-                    "token": "wrong_token",
-                    "ext_version": "1.0.0",
-                    "ua": "TestUA/1.0",
-                }
+                {"type": "hello", "proof": ext_proof(wrong, challenge["nonce2"], nonce)}
             )
         )
         with pytest.raises(websockets.exceptions.ConnectionClosed) as excinfo:
@@ -83,21 +116,100 @@ async def test_relay_token_auth(relay: BridgeRelay):
         f"ws://127.0.0.1:{relay.ext_port}/bridge",
         additional_headers={"Origin": good_origin},
     ) as ws:
+        resp = await client_handshake(ws, relay.token)
+        assert resp.get("type") == "hello_ok"
+        assert resp.get("client") == "browser_use"
+        assert relay.has_extension()
+        assert relay.ext_version == "1.2.0"
+
+
+@pytest.mark.asyncio
+async def test_relay_rejects_legacy_hello_without_echoing_token(relay: BridgeRelay):
+    """旧版扩展明文发令牌：中继拒绝（4426），且握手状态文件里有清晰原因、不含令牌。"""
+    good_origin = f"chrome-extension://{EXTENSION_ID}"
+    async with ws_connect(
+        f"ws://127.0.0.1:{relay.ext_port}/bridge",
+        additional_headers={"Origin": good_origin},
+    ) as ws:
+        await ws.send(json.dumps({"type": "hello", "token": relay.token}))
+        with pytest.raises(websockets.exceptions.ConnectionClosed) as excinfo:
+            await ws.recv()
+        assert excinfo.value.rcvd.code == 4426
+    assert not relay.has_extension()
+    state_text = (bridge_relay.CFG / HANDSHAKE_FILE).read_text(encoding="utf-8")
+    state = json.loads(state_text)
+    assert state["connected"] is False
+    assert "过旧" in state["last_error"]
+    assert relay.token not in state_text
+
+
+@pytest.mark.asyncio
+async def test_relay_handshake_never_sends_token_on_wire(relay: BridgeRelay):
+    """线路上中继发出的所有消息都不含令牌明文。"""
+    good_origin = f"chrome-extension://{EXTENSION_ID}"
+    async with ws_connect(
+        f"ws://127.0.0.1:{relay.ext_port}/bridge",
+        additional_headers={"Origin": good_origin},
+    ) as ws:
+        nonce = "c3" * 16
+        await ws.send(json.dumps({"type": "hello_init", "nonce": nonce}))
+        raw = await ws.recv()
+        assert relay.token not in raw
+        challenge = json.loads(raw)
         await ws.send(
             json.dumps(
                 {
                     "type": "hello",
-                    "token": relay.token,
-                    "ext_version": "1.0.0",
-                    "ua": "TestUA/1.0",
+                    "proof": ext_proof(relay.token, challenge["nonce2"], nonce),
                 }
             )
         )
-        resp_raw = await ws.recv()
-        resp = json.loads(resp_raw)
-        assert resp.get("type") == "hello_ok"
-        assert resp.get("client") == "browser_use"
-        assert relay.has_extension()
+        raw_ok = await ws.recv()
+        assert relay.token not in raw_ok
+        assert json.loads(raw_ok)["type"] == "hello_ok"
+
+
+@pytest.mark.asyncio
+async def test_relay_handshake_state_file(relay: BridgeRelay):
+    """握手成功写 bridge_last_handshake.json（含扩展版本与时间），断开后标记 connected=false。"""
+    good_origin = f"chrome-extension://{EXTENSION_ID}"
+    path = bridge_relay.CFG / HANDSHAKE_FILE
+    ws = await ws_connect(
+        f"ws://127.0.0.1:{relay.ext_port}/bridge",
+        additional_headers={"Origin": good_origin},
+    )
+    await client_handshake(ws, relay.token, ext_version="1.2.0")
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert state["connected"] is True
+    assert state["ext_version"] == "1.2.0"
+    assert state["port"] == relay.ext_port
+    assert isinstance(state["ts"], float)
+    await ws.close()
+    for _ in range(50):
+        if json.loads(path.read_text(encoding="utf-8"))["connected"] is False:
+            break
+        await asyncio.sleep(0.05)
+    assert json.loads(path.read_text(encoding="utf-8"))["connected"] is False
+
+
+def test_relay_refresh_token_after_rotation(tmp_path):
+    """令牌来自文件时，文件被轮换后 refresh_token 能重新读取；显式注入的令牌不受影响。"""
+    token_file = tmp_path / "bridge_token"
+    token_file.write_text("old" * 8, encoding="utf-8")
+    r = BridgeRelay()
+    assert r.token == "old" * 8
+    assert r.refresh_token() is False
+
+    token_file.write_text("new" * 8, encoding="utf-8")
+    os.utime(token_file, ns=(1, token_file.stat().st_mtime_ns + 10**9))
+    assert r.refresh_token() is True
+    assert r.token == "new" * 8
+
+    fixed = BridgeRelay(token="fixed")
+    token_file.write_text("other" * 5, encoding="utf-8")
+    os.utime(token_file, ns=(1, token_file.stat().st_mtime_ns + 2 * 10**9))
+    assert fixed.refresh_token() is False
+    assert fixed.token == "fixed"
 
 
 @pytest.mark.asyncio
@@ -255,17 +367,9 @@ async def test_relay_cdp_routing_lifecycle(relay: BridgeRelay):
         f"ws://127.0.0.1:{relay.ext_port}/bridge",
         additional_headers={"Origin": good_origin},
     )
-    await ext_ws.send(
-        json.dumps(
-            {
-                "type": "hello",
-                "token": relay.token,
-                "ext_version": "1.0.0",
-                "ua": "Mozilla/5.0 Chrome/130.0.0.0",
-            }
-        )
+    hello_resp = await client_handshake(
+        ext_ws, relay.token, ua="Mozilla/5.0 Chrome/130.0.0.0"
     )
-    hello_resp = json.loads(await ext_ws.recv())
     assert hello_resp["type"] == "hello_ok"
 
     pw_ws = await ws_connect(f"ws://127.0.0.1:{relay.cdp_port}{relay.cdp_path}")
