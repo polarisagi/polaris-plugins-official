@@ -23,3 +23,6 @@ plugins/knowledge_base/knowledge_base
 # Extension private keys
 key.pem
 */key.pem
+
+# 扩展签名私钥（决定扩展 ID，务必妥善保管，不得入库）
+*.pem

@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -30,8 +31,16 @@ def der_to_ext_id(der: bytes) -> str:
 
 
 def main() -> None:
-    root = Path(__file__).resolve().parent.parent
-    key_pem = root / "plugins" / "browser_use" / "extension" / "key.pem"
+    # 签名私钥不在仓库内：默认位于运行时配置目录，也可由第一个参数指定
+    key_pem = (
+        Path(sys.argv[1])
+        if len(sys.argv) > 1
+        else Path.home()
+        / ".config"
+        / "polaris-plugins"
+        / "browser"
+        / "extension-signing-key.pem"
+    )
     if not key_pem.exists():
         print(f"Key file not found: {key_pem}")
         return

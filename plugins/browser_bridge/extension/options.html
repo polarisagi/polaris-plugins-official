@@ -118,7 +118,12 @@
   </div>
 
   <div class="card">
-    <label for="tokenInput">配对令牌 (Pairing Token)</label>
+    <label>配对方式：<span id="tokenSource" class="badge">无</span></label>
+    <div class="row">
+      <button id="repairBtn" type="button">重新自动配对</button>
+    </div>
+    <p class="info-text">默认通过 Chrome Native Messaging 从本机自动获取令牌（需先在 Polaris 里运行 bridge_setup）。无法自动配对时可在下方手动粘贴。</p>
+    <label for="tokenInput">手动粘贴令牌（备用）</label>
     <input type="text" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="粘贴 Polaris 生成的配对令牌（64 位十六进制）">
     <div class="row">
       <button id="saveBtn">保存令牌</button>

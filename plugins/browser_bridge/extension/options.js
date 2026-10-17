@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveStatus = $("saveStatus");
   $("version").textContent = "v" + chrome.runtime.getManifest().version;
 
-  let state = await chrome.storage.local.get(["token", "activeConnections", "lastAuthError"]);
+  let state = await chrome.storage.local.get(["token", "tokenSource", "pairError", "activeConnections", "lastAuthError"]);
   render();
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -25,14 +25,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     // service worker 监听 token 变化后会立即用新令牌重连
-    await chrome.storage.local.set({ token, lastAuthError: null });
+    await chrome.storage.local.set({ token, tokenSource: "manual", lastAuthError: null });
     tokenInput.value = "";
     flash("✔ 已保存，正在连接本地中继…");
   });
 
   $("clearBtn").addEventListener("click", async () => {
-    await chrome.storage.local.remove(["token", "lastAuthError"]);
+    await chrome.storage.local.remove(["token", "tokenSource", "lastAuthError"]);
     flash("已清除令牌");
+  });
+
+  // 重新自动配对：丢弃当前（可能是手动的）令牌，向本地 Native Messaging 宿主重新获取
+  $("repairBtn").addEventListener("click", async () => {
+    flash("正在向本地宿主获取令牌…");
+    const res = await chrome.runtime.sendMessage({ type: "repair" });
+    if (res && res.ok) flash("✔ 已自动配对，正在连接本地中继…");
+    else flash("自动配对失败：请先运行 bridge_setup（Polaris 里说「设置浏览器扩展」）", true);
   });
 
   function flash(text, isErr = false) {
@@ -51,13 +59,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     $("savedRow").hidden = !token;
     $("savedToken").textContent = token ? mask(token) : "";
+    $("tokenSource").textContent = !token ? "无" : state.tokenSource === "auto" ? "自动配对" : "手动令牌";
 
     const el = $("connState");
     const hint = $("connHint");
-    if (!token) {
+    const errKind = state.lastAuthError && state.lastAuthError.kind;
+    if (errKind === "relay_outdated") {
+      el.className = "state bad";
+      el.textContent = "中继需要更新";
+      hint.textContent = "本地中继版本过旧，不支持新握手协议。请更新 browser-use / social 插件并重启 Polaris。";
+    } else if (errKind === "relay_untrusted") {
+      el.className = "state bad";
+      el.textContent = "中继身份校验失败";
+      hint.textContent = "对端未能证明自己持有令牌（令牌不一致，或该端口上不是 Polaris 中继）。可点「重新自动配对」。";
+    } else if (!token) {
       el.className = "state bad";
       el.textContent = "未配对";
-      hint.textContent = "请粘贴 Polaris 生成的配对令牌（保存在 ~/.config/polaris-plugins/browser/bridge_token）。";
+      hint.textContent = state.pairError
+        ? "自动配对不可用：" + state.pairError + "。请在 Polaris 里说「设置浏览器扩展」（运行 bridge_setup），或在下方手动粘贴令牌。"
+        : "正在尝试自动配对；也可在下方手动粘贴令牌。";
     } else if (conns.length > 0) {
       el.className = "state ok";
       el.textContent = "已连接";
@@ -65,7 +85,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else if (state.lastAuthError) {
       el.className = "state bad";
       el.textContent = "令牌被拒绝";
-      hint.textContent = "中继拒绝了当前令牌，请重新粘贴 bridge_token 文件中的令牌。";
+      hint.textContent = "中继拒绝了当前令牌。自动配对的扩展会自动重取；手动令牌请点「重新自动配对」。";
     } else {
       el.className = "state off";
       el.textContent = "未连接";

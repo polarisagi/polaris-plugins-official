@@ -1,0 +1,40 @@
+{
+  "name": "polaris-browser-bridge",
+  "version": "1.0.0",
+  "description": "Polaris Browser Bridge 浏览器扩展的一键设置：自动配对令牌（Native Messaging）、扩展同步与令牌管理。",
+  "author": {
+    "name": "mrlaoliai",
+    "email": "polarisagi.online@gmail.com",
+    "url": "https://polarisagi.online/"
+  },
+  "homepage": "https://polarisagi.online/",
+  "repository": "https://github.com/polarisagi/polaris-plugins-official",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "browser",
+    "chrome-extension",
+    "native-messaging",
+    "pairing",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Browser Bridge（浏览器扩展设置）",
+    "shortDescription": "一键设置 Chrome 扩展并自动配对，供浏览器与社交插件使用。",
+    "longDescription": "Polaris 官方浏览器扩展（Polaris Browser Bridge）的唯一来源与设置入口：一键同步扩展到稳定目录、注册 Native Messaging 宿主以自动配对令牌、提供状态与令牌轮换。browser-use 与 social 插件依赖本插件。\n\nRequires: Python ≥3.14, Chrome.",
+    "developerName": "mrlaoliai",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://polarisagi.online/",
+    "privacyPolicyURL": "https://github.com/polarisagi/polaris-plugins-official",
+    "termsOfServiceURL": "https://github.com/polarisagi/polaris-plugins-official/blob/main/LICENSE",
+    "defaultPrompt": [
+      "设置浏览器扩展。",
+      "查看浏览器扩展的连接状态。"
+    ]
+  }
+}

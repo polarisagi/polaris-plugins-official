@@ -1,0 +1,20 @@
+[project]
+name = "browser-bridge"
+version = "1.0.0"
+description = "Polaris MCP plugin: Polaris Browser Bridge Chrome extension owner — one-click setup, Native Messaging auto-pairing and token management."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp>=1.30.0,<2",
+    "pydantic>=2.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"

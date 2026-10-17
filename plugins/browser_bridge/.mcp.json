@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "polaris-browser-bridge": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "src.main"
+      ]
+    }
+  }
+}

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polaris Browser Bridge 设置</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --card: #f8fafc;
+    --accent: #0284c7; --accent-fg: #ffffff; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --card: #1e293b;
+      --accent: #38bdf8; --accent-fg: #0b1220; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --card: #1e293b;
+    --accent: #38bdf8; --accent-fg: #0b1220; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; }
+  .lamp { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+  .lamp::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .lamp.ok { color: var(--ok); } .lamp.ok::before { background: var(--ok); }
+  .lamp.wait { color: var(--warn); } .lamp.wait::before { background: var(--warn); }
+  .lamp.bad { color: var(--bad); } .lamp.bad::before { background: var(--bad); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .55; cursor: default; }
+  ol { margin: 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  li.done { color: var(--muted); text-decoration: line-through; }
+  .box { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+  code { word-break: break-all; font: 12px ui-monospace, Menlo, monospace; user-select: all; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  #msg { margin-top: 8px; font-size: 13px; min-height: 18px; }
+  #msg.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Polaris Browser Bridge 设置</h1>
+  <span id="lamp" class="lamp wait">检查中…</span>
+</header>
+
+<div class="actions">
+  <button id="btnSetup" class="primary">准备扩展</button>
+  <button id="btnOpen">打开 Chrome 扩展页</button>
+  <button id="btnRotate" class="danger">重新生成令牌</button>
+</div>
+<div id="msg"></div>
+
+<div class="box">
+  <ol id="steps">
+    <li data-k="devmode">在 Chrome 扩展页右上角打开「开发者模式」。</li>
+    <li data-k="load">点「加载已解压的扩展程序」（或把扩展文件夹拖入页面），选择下方目录。</li>
+    <li data-k="connect">等待上方状态灯变绿；此后令牌由 Chrome 自动配对，无需粘贴。</li>
+  </ol>
+  <div class="meta">扩展目录：<code id="extDir">（尚未准备，请先点「准备扩展」）</code></div>
+</div>
+<div class="meta" id="detail"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let seq = 0;
+const pending = new Map();
+let busy = false, polling = false, rotateArmed = false;
+
+function post(msg) { window.parent.postMessage(msg, "*"); }
+function request(method, params) {
+  const id = ++seq;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    post({ jsonrpc: "2.0", id, method, params });
+    setTimeout(() => { if (pending.delete(id)) reject(new Error("请求超时")); }, 30000);
+  });
+}
+function notify(method, params) { post({ jsonrpc: "2.0", method, params: params || {} }); }
+
+function applyTheme(ctx) {
+  if (ctx && (ctx.theme === "dark" || ctx.theme === "light")) {
+    document.documentElement.setAttribute("data-theme", ctx.theme);
+  }
+}
+
+window.addEventListener("message", (e) => {
+  if (e.source !== window.parent) return;
+  const m = e.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.id !== undefined && !m.method) {
+    const p = pending.get(m.id);
+    if (!p) return;
+    pending.delete(m.id);
+    if (m.error) p.reject(new Error(m.error.message || "错误")); else p.resolve(m.result);
+    return;
+  }
+  if (m.method === "ui/resource-teardown" && m.id !== undefined) {
+    post({ jsonrpc: "2.0", id: m.id, result: {} });
+    return;
+  }
+  if (m.method === "ui/notifications/host-context-changed") applyTheme(m.params);
+  if (m.method === "ui/notifications/tool-result") {
+    const st = parseResult(m.params);
+    if (st && st.connection) render(st);
+  }
+});
+
+function parseResult(res) {
+  if (!res || res.isError) return null;
+  if (res.structuredContent) return res.structuredContent;
+  const t = res.content && res.content[0] && res.content[0].text;
+  try { return t ? JSON.parse(t) : null; } catch (_) { return null; }
+}
+
+async function callTool(name) {
+  const res = await request("tools/call", { name, arguments: {} });
+  if (res && res.isError) {
+    const t = res.content && res.content[0] && res.content[0].text;
+    throw new Error(t || "工具调用失败");
+  }
+  return parseResult(res) || {};
+}
+
+function say(text, isErr) {
+  const el = $("msg");
+  el.textContent = text || "";
+  el.className = isErr ? "err" : "";
+}
+
+function render(st) {
+  const lamp = $("lamp");
+  const c = st.connection || {}, ext = st.extension || {}, host = st.host || {};
+  if (c.connected) { lamp.className = "lamp ok"; lamp.textContent = "已连接" + (c.ext_version ? "（扩展 v" + c.ext_version + "）" : ""); }
+  else if (ext.ready) { lamp.className = "lamp wait"; lamp.textContent = "等待扩展连接"; }
+  else { lamp.className = "lamp bad"; lamp.textContent = "尚未准备"; }
+  if (ext.ready) $("extDir").textContent = ext.dir;
+  const done = { devmode: !!(c.connected || c.ever_paired), load: !!(c.connected || c.ever_paired), connect: !!c.connected };
+  document.querySelectorAll("#steps li").forEach((li) => li.classList.toggle("done", !!done[li.dataset.k]));
+  const bits = [];
+  bits.push("自动配对宿主：" + (host.supported === false ? "当前系统不支持（需手动粘贴令牌）" : host.registered ? "已注册" : "未注册"));
+  bits.push("令牌：" + (st.token && st.token.exists ? "已就绪" : "未生成"));
+  if (ext.ready && !ext.in_sync) bits.push("扩展目录落后于插件内版本，请再点「准备扩展」");
+  if (c.last_handshake_at) bits.push("最近握手：" + c.last_handshake_at);
+  $("detail").textContent = bits.join(" · ");
+}
+
+async function poll() {
+  if (polling || document.hidden) return;
+  polling = true;
+  try { render(await callTool("bridge_status")); } catch (_) { /* 下次轮询重试 */ }
+  polling = false;
+}
+
+async function act(name, okText) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  say("处理中…");
+  try {
+    const st = await callTool(name);
+    say(st.message || okText, false);
+    if (st.connection) render(st); else await poll();
+  } catch (err) {
+    say(String(err && err.message || err), true);
+  }
+  busy = false;
+  document.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+}
+
+$("btnSetup").addEventListener("click", () => act("bridge_setup", "扩展目录与自动配对已准备好。"));
+$("btnOpen").addEventListener("click", () => act("bridge_open_chrome_extensions", "已打开。"));
+$("btnRotate").addEventListener("click", () => {
+  const b = $("btnRotate");
+  if (!rotateArmed) {
+    rotateArmed = true;
+    b.textContent = "再点一次确认重新生成";
+    setTimeout(() => { rotateArmed = false; b.textContent = "重新生成令牌"; }, 5000);
+    return;
+  }
+  rotateArmed = false;
+  b.textContent = "重新生成令牌";
+  act("bridge_rotate_token", "令牌已重新生成。");
+});
+
+new ResizeObserver(() => {
+  notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight });
+}).observe(document.body);
+
+(async () => {
+  try {
+    const init = await request("ui/initialize", {
+      protocolVersion: "2026-01-26",
+      appInfo: { name: "polaris-browser-bridge-setup", version: "1.0.0" },
+      appCapabilities: {},
+    });
+    applyTheme(init && init.hostContext);
+    notify("ui/notifications/initialized");
+  } catch (err) {
+    say("与宿主握手失败：" + String(err && err.message || err), true);
+  }
+  await poll();
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>
