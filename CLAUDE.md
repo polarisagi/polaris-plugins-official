@@ -109,9 +109,9 @@ swiftc plugins/computer_use/src/find_text_on_screen.swift \
 
 ---
 
-### browser_bridge — 浏览器扩展设置（v1.0.0，MCP 服务器 `polaris-browser-bridge`）
+### browser_bridge — 浏览器扩展设置（v1.1.0，MCP 服务器 `polaris-browser-bridge`）
 
-`FastMCP` 实现，是 Chrome 扩展 Polaris Browser Bridge 的**唯一源码**（`extension/`，v1.2.0）与设置入口；`browser_use`、`social` 在 `.claude-plugin/plugin.json` 与市场条目里声明依赖它（Polaris 只从 Claude 格式清单与市场条目读取 `dependencies`，`.codex-plugin/plugin.json` 里的会被忽略）。工具：`bridge_setup`（令牌 + 同步扩展到稳定目录 `~/.config/polaris-plugins/browser/extension/` + 注册 Native Messaging 宿主 `online.polarisagi.bridge`，声明 MCP Apps 卡片 `ui://polaris-browser-bridge/setup.html`）、`bridge_open_chrome_extensions`、`bridge_status`、`bridge_rotate_token`。自动配对：扩展 `chrome.runtime.sendNativeMessage` → `src/native_host.py`（仅标准库，被复制到 `native-host/` 并由写死解释器绝对路径的包装脚本启动）返回令牌；失败回退手动粘贴。本进程不运行中继，连接状态读 `bridge_last_handshake.json`。签名私钥 `extension-signing-key.pem` 在 `~/.config/polaris-plugins/browser/`，不得入库。`bridge_const.py` 在三个插件各有一份，需逐字节一致（`check.sh` 校验）。
+`FastMCP` 实现，是 Chrome 扩展 Polaris Browser Bridge 的**唯一源码**（`extension/`，v1.2.0）与设置入口；`browser_use`、`social` 在 `.claude-plugin/plugin.json` 与市场条目里声明依赖它（Polaris 只从 Claude 格式清单与市场条目读取 `dependencies`，`.codex-plugin/plugin.json` 里的会被忽略）。工具：`bridge_setup`（令牌 + 同步扩展到稳定目录 `~/.config/polaris-plugins/browser/extension/` + 注册 Native Messaging 宿主 `online.polarisagi.bridge`，声明 MCP Apps 卡片 `ui://polaris-browser-bridge/setup.html`）、`bridge_open_chrome_extensions`、`bridge_status`、`bridge_rotate_token`。自动配对：扩展 `chrome.runtime.sendNativeMessage` → `src/native_host.py`（仅标准库，被复制到 `native-host/` 并由写死解释器绝对路径的包装脚本启动）返回令牌；失败回退手动粘贴。本进程不运行中继，连接状态读 `bridge_last_handshake.json`。Polaris 插件页集成：清单 `extensions["ai.polarisagi"]` 声明 `setupTool: bridge_setup` / `statusTool: bridge_status`（插件页「设置」按钮直接执行 setupTool 打开卡片，不经模型；依赖方插件据 statusTool 提示「需要完成设置」）；`bridge_status` 的 `structuredContent.ready` 表示**一次性设置已完成**（本机就绪 + 新协议扩展曾握手且 Chrome 中版本与稳定目录一致），不是「此刻已连接」——中继只在使用浏览器的插件进程里运行，按实时连接判断会在空闲时误报；`message` 给出下一步。签名私钥 `extension-signing-key.pem` 在 `~/.config/polaris-plugins/browser/`，不得入库。`bridge_const.py` 在三个插件各有一份，需逐字节一致（`check.sh` 校验）。
 
 ---
 

@@ -294,6 +294,61 @@ def connection_info(paths: BridgePaths, now: float | None = None) -> dict[str, A
     return info
 
 
+# 新协议（双向 HMAC 握手）扩展的最低版本：低于它的扩展无法与当前中继配对
+MIN_PAIRED_EXT_VERSION = "1.2.0"
+
+
+def _version_tuple(v: object) -> tuple[int, ...]:
+    """把 "1.2.0" 解析为 (1, 2, 0)；无法解析返回空元组（视为最低）。"""
+    if not isinstance(v, str):
+        return ()
+    parts: list[int] = []
+    for seg in v.strip().split("."):
+        if not seg.isdigit():
+            break
+        parts.append(int(seg))
+    return tuple(parts)
+
+
+def _readiness(st: dict[str, Any]) -> tuple[bool, str]:
+    """供 Polaris 插件页 statusTool 使用的 ready / message。
+
+    ready 表示「一次性设置已完成」，而不是「此刻已连接」：中继只在使用浏览器的插件
+    进程运行时存在，若以实时连接为准，插件页会在空闲时误报「需要设置」。
+    判定：本机准备就绪（令牌、扩展目录、自动配对宿主）且扩展曾以新协议成功握手，
+    并且 Chrome 中运行的扩展版本与稳定目录一致（插件升级后需在 Chrome 重新加载）。
+    """
+    conn = st["connection"]
+    ext = st["extension"]
+    if not st["ok"]:
+        return False, "尚未准备扩展：点击「设置」完成一键准备。"
+    paired_ver = _version_tuple(conn.get("ext_version"))
+    if not conn.get("last_handshake_at") or paired_ver < _version_tuple(
+        MIN_PAIRED_EXT_VERSION
+    ):
+        return (
+            False,
+            (
+                "扩展尚未在 Chrome 中加载或仍是旧版本：打开 chrome://extensions，"
+                f"加载已解压的扩展程序并选择 {ext.get('dir')}。"
+            ),
+        )
+    if ext.get("version") and paired_ver < _version_tuple(ext.get("version")):
+        return (
+            False,
+            (
+                f"扩展已更新到 {ext.get('version')}，Chrome 中仍运行 {conn.get('ext_version')}："
+                "请在 chrome://extensions 点击该扩展的「重新加载」。"
+            ),
+        )
+    if conn.get("connected"):
+        return True, f"已连接（扩展 {conn.get('ext_version')}）。"
+    return True, (
+        f"设置已完成（扩展 {conn.get('ext_version')}，最近握手 {conn.get('last_handshake_at')}）；"
+        "插件使用浏览器时会自动连接。"
+    )
+
+
 def _next_steps(st: dict[str, Any]) -> list[str]:
     steps: list[str] = []
     if not st["extension"]["ready"] or not st["extension"]["in_sync"]:
@@ -325,6 +380,7 @@ def build_status(paths: BridgePaths, now: float | None = None) -> dict[str, Any]
         and st["extension"]["ready"]
         and (st["host"]["registered"] or not st["host"]["supported"])
     )
+    st["ready"], st["message"] = _readiness(st)
     return st
 
 

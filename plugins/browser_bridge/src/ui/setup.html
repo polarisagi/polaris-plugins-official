@@ -139,17 +139,20 @@ function say(text, isErr) {
 function render(st) {
   const lamp = $("lamp");
   const c = st.connection || {}, ext = st.extension || {}, host = st.host || {};
+  // st.ready = 一次性设置已完成（新版扩展曾成功握手且版本与目录一致），与插件页 statusTool 同一判定
   if (c.connected) { lamp.className = "lamp ok"; lamp.textContent = "已连接" + (c.ext_version ? "（扩展 v" + c.ext_version + "）" : ""); }
-  else if (ext.ready) { lamp.className = "lamp wait"; lamp.textContent = "等待扩展连接"; }
+  else if (st.ready) { lamp.className = "lamp ok"; lamp.textContent = "设置已完成"; }
+  else if (ext.ready) { lamp.className = "lamp wait"; lamp.textContent = "等待在 Chrome 中加载扩展"; }
   else { lamp.className = "lamp bad"; lamp.textContent = "尚未准备"; }
   if (ext.ready) $("extDir").textContent = ext.dir;
-  const done = { devmode: !!(c.connected || c.ever_paired), load: !!(c.connected || c.ever_paired), connect: !!c.connected };
+  const done = { devmode: !!(c.connected || st.ready), load: !!(c.connected || st.ready), connect: !!(c.connected || st.ready) };
   document.querySelectorAll("#steps li").forEach((li) => li.classList.toggle("done", !!done[li.dataset.k]));
   const bits = [];
   bits.push("自动配对宿主：" + (host.supported === false ? "当前系统不支持（需手动粘贴令牌）" : host.registered ? "已注册" : "未注册"));
   bits.push("令牌：" + (st.token && st.token.exists ? "已就绪" : "未生成"));
   if (ext.ready && !ext.in_sync) bits.push("扩展目录落后于插件内版本，请再点「准备扩展」");
   if (c.last_handshake_at) bits.push("最近握手：" + c.last_handshake_at);
+  if (!st.ready && st.message) bits.unshift(st.message);
   $("detail").textContent = bits.join(" · ");
 }
 

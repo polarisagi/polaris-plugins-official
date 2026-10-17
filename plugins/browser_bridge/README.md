@@ -9,7 +9,7 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 
 ## 首次设置（约 1 分钟）
 
-1. 对 Polaris 说「**设置浏览器扩展**」（或调用 `bridge_setup`）。也可以用设置卡片里的按钮。
+1. 在 Polaris **插件页**点本插件（或依赖它的 browser-use / social）的「**设置**」按钮，直接打开设置卡片；也可以对 Polaris 说「**设置浏览器扩展**」（或调用 `bridge_setup`）。
 2. 点「打开 Chrome 扩展页」（或调用 `bridge_open_chrome_extensions`，macOS 会打开 `chrome://extensions` 并在 Finder 中定位扩展目录）。
 3. 在 Chrome 扩展页：开启右上角「开发者模式」→「加载已解压的扩展程序」（或把文件夹拖入页面）→ 选择
    `~/.config/polaris-plugins/browser/extension/`。
@@ -17,6 +17,20 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 
 插件升级后重新执行一次 `bridge_setup` 即可把新版扩展同步到同一目录，路径不变；再在 `chrome://extensions` 点一下「重新加载」
 （或见下文开发者重载）。
+
+## Polaris 插件页集成
+
+清单 `.codex-plugin/plugin.json` 在私有命名空间声明：
+
+```json
+"extensions": { "ai.polarisagi": { "setupTool": "bridge_setup", "statusTool": "bridge_status" } }
+```
+
+- 「设置」按钮：Polaris 直接执行 `bridge_setup`（不经模型、不计 token），把设置卡片作为一条消息打开。
+- 状态：Polaris 调用 `bridge_status`，读取 `structuredContent.ready` / `message`。`ready` 表示**一次性设置已完成**：
+  本机已准备（令牌、扩展目录、自动配对宿主）且新版扩展曾成功握手、Chrome 中运行的版本与稳定目录一致；
+  不代表此刻已连接（中继只在使用浏览器的插件进程中运行）。未就绪时，依赖本插件的 browser-use / social 卡片会提示「需要完成设置」。
+- 清单快照在安装时记录：升级前已安装的 Polaris 需升级本插件才会出现「设置」按钮。
 
 ## 工具
 

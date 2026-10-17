@@ -202,3 +202,63 @@ def test_shipped_extension_matches_constants():
         encoding="utf-8"
     )
     assert not list(ext.glob("*.pem"))
+
+
+def _write_pairing(paths: BridgePaths, ext_version: str, connected: bool) -> None:
+    paths.handshake_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.handshake_file.write_text(
+        json.dumps(
+            {
+                "ts": time.time(),
+                "connected": connected,
+                "ext_version": ext_version,
+                "port": 18790,
+                "pid": os.getpid(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_ready_requires_new_protocol_pairing(paths: BridgePaths) -> None:
+    """ready 表示一次性设置完成：仅本机准备好、或只有旧版扩展留下的标记，都不算就绪。"""
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is False and "设置" in st["message"]
+
+    setup_ops.run_setup(paths, python=sys.executable)
+    # 旧版扩展留下的 ext_seen 标记不能让 ready 变真
+    paths.ext_seen_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.ext_seen_file.touch()
+    st = setup_ops.build_status(paths)
+    assert st["ok"] is True and st["ready"] is False
+    assert "chrome://extensions" in st["message"]
+
+    _write_pairing(paths, "1.1.0", connected=True)
+    assert setup_ops.build_status(paths)["ready"] is False
+
+    ext_ver = setup_ops.build_status(paths)["extension"]["version"]
+    _write_pairing(paths, ext_ver, connected=False)
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is True and "设置已完成" in st["message"]
+
+    _write_pairing(paths, ext_ver, connected=True)
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is True and "已连接" in st["message"]
+
+
+def test_ready_false_when_chrome_runs_older_extension(paths: BridgePaths) -> None:
+    """插件升级同步了新扩展、但 Chrome 仍运行旧版：提示重新加载。"""
+    setup_ops.run_setup(paths, python=sys.executable)
+    ext_dir = Path(setup_ops.build_status(paths)["extension"]["dir"])
+    manifest = json.loads((ext_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["version"] = "9.0.0"  # 模拟插件升级后同步到稳定目录的新版扩展
+    (ext_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _write_pairing(paths, "1.2.0", connected=True)
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is False and "重新加载" in st["message"]
+
+
+def test_version_tuple() -> None:
+    assert setup_ops._version_tuple("1.10.0") > setup_ops._version_tuple("1.9.9")
+    assert setup_ops._version_tuple(None) == ()
+    assert setup_ops._version_tuple("x") == ()
