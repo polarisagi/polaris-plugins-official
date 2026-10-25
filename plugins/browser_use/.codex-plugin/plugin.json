@@ -1,7 +1,7 @@
 {
   "name": "polaris-browser-use",
   "version": "2.1.0",
-  "description": "复用你已登录的 Chrome；通用网页阅读与交互；省 token。",
+  "description": "Reuses your signed-in Chrome for general web reading and interaction, with token-efficient output.",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -19,9 +19,9 @@
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
-    "displayName": "Browser Use (DOM Extraction)",
-    "shortDescription": "复用你已登录的 Chrome；通用网页阅读与交互；省 token。",
-    "longDescription": "Polaris 官方通用浏览器插件。复用你日常已登录的 Chrome 浏览器会话，提供省 token 的正文读取与 DOM 快照交互；严格隔离在 Polaris 自建窗口内操作，不打扰用户其他标签。已知社交平台请使用 polaris-social 插件。\n\nRequires: Python ≥3.14, Chrome.",
+    "displayName": "Browser Use",
+    "shortDescription": "Read and operate web pages in your signed-in Chrome, token-efficiently.",
+    "longDescription": "The official Polaris general-purpose browser plugin. It reuses your everyday signed-in Chrome session and provides token-efficient page reading and DOM-snapshot interaction. It works strictly inside a window created by Polaris and never disturbs your other tabs. For known social platforms, use the polaris-social plugin.\n\nRequires: Python ≥3.14, Chrome.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
     "capabilities": [

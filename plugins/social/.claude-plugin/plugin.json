@@ -1,7 +1,7 @@
 {
   "name": "polaris-social",
   "version": "3.0.0",
-  "description": "社交平台读写：知乎/X/微博/小红书的搜索、热榜、动态与正文读取（0 token 接口拦截优先），以及多平台发帖与互动；读写共享按平台的限速与风控熔断。",
+  "description": "Social platform read & write: search, trending lists, feeds, and full-text reading on Zhihu, X, Weibo, and Xiaohongshu (zero-token API interception first), plus multi-platform posting and engagement; reads and writes share per-platform rate limits and risk circuit breakers.",
   "dependencies": [
     {
       "name": "polaris-browser-bridge",

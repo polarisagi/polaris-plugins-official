@@ -1,7 +1,7 @@
 {
   "name": "polaris-browser-bridge",
   "version": "1.1.0",
-  "description": "Polaris Browser Bridge 浏览器扩展的一键设置：自动配对令牌（Native Messaging）、扩展同步与令牌管理。",
+  "description": "One-click setup for the Polaris Browser Bridge Chrome extension: automatic token pairing via Native Messaging, extension sync, and token management.",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -20,9 +20,9 @@
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
-    "displayName": "Browser Bridge（浏览器扩展设置）",
-    "shortDescription": "一键设置 Chrome 扩展并自动配对，供浏览器与社交插件使用。",
-    "longDescription": "Polaris 官方浏览器扩展（Polaris Browser Bridge）的唯一来源与设置入口：一键同步扩展到稳定目录、注册 Native Messaging 宿主以自动配对令牌、提供状态与令牌轮换。browser-use 与 social 插件依赖本插件。\n\nRequires: Python ≥3.14, Chrome.",
+    "displayName": "Browser Bridge",
+    "shortDescription": "Set up the Chrome extension and pair it automatically for the browser and social plugins.",
+    "longDescription": "The single source and setup entry for the official Polaris Browser Bridge extension: syncs the extension to a stable directory in one click, registers the Native Messaging host to pair the token automatically, and provides status checks and token rotation. The browser-use and social plugins depend on this plugin.\n\nRequires: Python ≥3.14, Chrome.",
     "developerName": "mrlaoliai",
     "category": "Productivity",
     "capabilities": [

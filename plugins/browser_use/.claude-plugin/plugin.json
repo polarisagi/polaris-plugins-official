@@ -1,7 +1,7 @@
 {
   "name": "polaris-browser-use",
   "version": "2.1.0",
-  "description": "复用你已登录的 Chrome；通用网页阅读与交互；省 token。",
+  "description": "Reuses your signed-in Chrome for general web reading and interaction, with token-efficient output.",
   "dependencies": [
     {
       "name": "polaris-browser-bridge",

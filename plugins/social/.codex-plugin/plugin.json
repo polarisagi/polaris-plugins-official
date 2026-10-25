@@ -1,7 +1,7 @@
 {
   "name": "polaris-social",
   "version": "3.0.0",
-  "description": "社交平台读写：知乎/X/微博/小红书的搜索、热榜、动态与正文读取（0 token 接口拦截优先），以及多平台发帖与互动；读写共享按平台的限速与风控熔断。",
+  "description": "Social platform read & write: search, trending lists, feeds, and full-text reading on Zhihu, X, Weibo, and Xiaohongshu (zero-token API interception first), plus multi-platform posting and engagement; reads and writes share per-platform rate limits and risk circuit breakers.",
   "author": {
     "name": "mrlaoliai",
     "email": "polarisagi.online@gmail.com",
@@ -27,9 +27,9 @@
   "mcpServers": "./.mcp.json",
   "skills": "./skills/",
   "interface": {
-    "displayName": "Polaris Social（社交平台读写）",
-    "shortDescription": "读取知乎/X/微博/小红书内容并跨平台发帖互动，读写共享限速。",
-    "longDescription": "Polaris 官方社交平台插件。读：social_search / social_hot / social_feed / social_read 复用你已登录的 Chrome，依据站点配方优先拦截页面 XHR JSON（0 token），社交内容读取与发帖共用同一平台限速与风控熔断。写：在 Twitter/X、微博、小红书、抖音、公众号、Instagram、Facebook 等平台发布、删除、评论、点赞与私信，并通过 get_platform_skill 读取各平台合规规范。\n\nRequires: Python ≥3.14, Chrome.",
+    "displayName": "Polaris Social",
+    "shortDescription": "Read Zhihu, X, Weibo, and Xiaohongshu content and post across platforms, with shared rate limits.",
+    "longDescription": "The official Polaris social platform plugin. Read: social_search / social_hot / social_feed / social_read reuse your signed-in Chrome and, guided by per-site recipes, intercept page XHR JSON first (zero tokens); reading and posting share the same per-platform rate limits and risk circuit breakers. Write: publish, delete, comment, like, and send direct messages on Twitter/X, Weibo, Xiaohongshu, Douyin, WeChat Official Accounts, Instagram, Facebook, and more, and read each platform's compliance guidelines via get_platform_skill.\n\nRequires: Python ≥3.14, Chrome.",
     "developerName": "mrlaoliai",
     "category": "Social",
     "capabilities": [
