@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import os
+import sqlite3
 import tempfile
 import time
 from pathlib import Path
@@ -126,6 +127,7 @@ def _worker_proc(db_file: str, return_list: list) -> None:
 
 
 def test_multiprocessing_acquire() -> None:
+    # 断言数据库中的计划时间戳而非墙钟唤醒时间：后者受进程调度延迟影响，机器繁忙时会误报。
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
@@ -138,15 +140,25 @@ def test_multiprocessing_acquire() -> None:
 
         p1.start()
         p2.start()
-        p1.join(timeout=10)
-        p2.join(timeout=10)
+        p1.join(timeout=30)
+        p2.join(timeout=30)
 
+        assert p1.exitcode == 0, f"子进程 1 异常退出，exitcode={p1.exitcode}"
+        assert p2.exitcode == 0, f"子进程 2 异常退出，exitcode={p2.exitcode}"
         assert len(results) == 6
-        # 验证所有请求时间戳按序间隔执行
-        timestamps = sorted([r[2] for r in results])
-        for i in range(1, len(timestamps)):
-            # 最小间隔应至少约为 0.15s 以上
-            assert timestamps[i] - timestamps[i - 1] >= 0.12
+
+        conn = sqlite3.connect(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT ts FROM site_requests WHERE site = 'concurrent_site' ORDER BY ts"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 6
+        scheduled = [row[0] for row in rows]
+        for i in range(1, len(scheduled)):
+            # min_interval_s=0.2；jitter 只会让间隔更大
+            assert scheduled[i] - scheduled[i - 1] >= 0.2 - 1e-6
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
