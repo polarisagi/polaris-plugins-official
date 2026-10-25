@@ -1,0 +1,26 @@
+# 精选（ADR-0123）：目录条目 ID → 权重。权重越大越靠前；插件页「推荐」排序与首页精选区按此展示。
+# 约定：Polaris 官方 100~199；各家官方热门 50~99；其余 1~49。条目不存在时忽略。
+featured:
+  polarisagi/polaris-plugins-official/polaris-browser-use: 150
+  polarisagi/polaris-plugins-official/polaris-social: 140
+  polarisagi/polaris-plugins-official/polaris-knowledge-base: 130
+  polarisagi/polaris-plugins-official/polaris-computer-use: 120
+  polarisagi/polaris-plugins-official/polaris-browser-bridge: 110
+  anthropic/claude-plugins-official/github: 90
+  anthropic/claude-plugins-official/context7: 88
+  anthropic/claude-plugins-official/playwright: 86
+  anthropic/claude-plugins-official/frontend-design: 84
+  anthropic/claude-plugins-official/code-review: 82
+  anthropic/claude-plugins-official/figma: 80
+  anthropic/claude-plugins-official/notion: 78
+  anthropic/claude-plugins-official/linear: 76
+  anthropic/claude-plugins-official/sentry: 74
+  anthropic/claude-plugins-official/supabase: 72
+  anthropic/claude-plugins-official/vercel: 70
+  anthropic/claude-plugins-official/slack: 68
+  anthropic/claude-plugins-official/stripe: 66
+  anthropic/claude-plugins-official/canva: 64
+  openai/plugins/github: 60
+  openai/plugins/figma: 58
+  openai/plugins/notion: 56
+  openai/plugins/linear: 54

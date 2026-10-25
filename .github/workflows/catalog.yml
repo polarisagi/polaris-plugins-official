@@ -1,0 +1,91 @@
+name: Catalog Overlay
+
+# 目录覆盖层（ADR-0123）：为全部上游市场目录条目生成中文名称/摘要/说明与四维分类，
+# 产物 index.json + machine.json 提交到本仓库 catalog-data 分支（孤儿分支，只放生成数据）。
+# Polaris 守护进程从 raw.githubusercontent.com/.../catalog-data/index.json 拉取。
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'   # 每 6 小时；避开整点高峰
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '不调用 LLM（只复用缓存并叠加人工数据）'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'catalog/**'          # 改词表 / 人工校对 / 精选后立即重新生成
+
+concurrency:
+  group: catalog-overlay
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout plugins repo
+        uses: actions/checkout@v4
+        with:
+          path: plugins
+
+      - name: Checkout polaris (generator)
+        uses: actions/checkout@v4
+        with:
+          repository: polarisagi/polaris
+          ref: main
+          path: polaris
+
+      - name: Checkout catalog-data branch
+        env:
+          REPO_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: |
+          if git ls-remote --exit-code --heads "$REPO_URL" catalog-data >/dev/null 2>&1; then
+            git clone --depth 1 --branch catalog-data "$REPO_URL" data
+          else
+            mkdir data
+            git -C data init -b catalog-data
+            git -C data remote add origin "$REPO_URL"
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: polaris/go.mod
+          cache-dependency-path: polaris/go.sum
+
+      - name: Generate overlay
+        working-directory: polaris
+        env:
+          CATALOG_LLM_API_KEY: ${{ secrets.CATALOG_LLM_API_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          EXTRA=""
+          if [ "$DRY_RUN" = "true" ]; then EXTRA="-dry-run"; fi
+          go run tools/catalog_overlay_gen.go \
+            -taxonomy ../plugins/catalog/taxonomy.yaml \
+            -overrides ../plugins/catalog/overrides/zh-CN.yaml \
+            -featured ../plugins/catalog/featured.yaml \
+            -machine ../data/machine.json \
+            -out ../data/index.json \
+            -cache "$RUNNER_TEMP/marketplaces" \
+            $EXTRA
+
+      - name: Commit to catalog-data
+        working-directory: data
+        run: |
+          git config user.name "MrLaoLiAI"
+          git config user.email "polarisagi.online@gmail.com"
+          git add index.json machine.json
+          if git diff --cached --quiet; then
+            echo "overlay unchanged"
+            exit 0
+          fi
+          git commit -m "chore(catalog): 更新目录覆盖层 $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push origin HEAD:catalog-data

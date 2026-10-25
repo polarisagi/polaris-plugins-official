@@ -1,0 +1,39 @@
+# 人工校对（ADR-0123）：覆盖机器翻译与分类，优先级最高，生成器每轮都在机器结果之上重新叠加。
+#
+# 格式：entries 下以目录条目 ID 为键（= Polaris 插件页条目 ID，形如 <市场ID>/<插件名>），只写要覆盖的字段：
+#   name / summary / description：空串或不写 = 不覆盖
+#   topic / department / industry / life：不写 = 不覆盖；写 [] = 覆盖为空；取值必须在 taxonomy.yaml 中
+# 删除某条覆盖后，下一轮自动恢复为机器结果。ID 写错（不存在的条目）会被忽略。
+entries:
+  polarisagi/polaris-plugins-official/polaris-computer-use:
+    name: 电脑操控
+    summary: 用键鼠和截图操作任意桌面应用，包括聊天软件
+    description: 通用桌面自动化插件，带视觉 OCR。可以操控任意桌面应用（GUI），包括微信等聊天软件，自动执行工作流，模拟键盘鼠标并截取屏幕。
+    topic: [automation-workflows]
+    department: []
+    industry: []
+    life: []
+  polarisagi/polaris-plugins-official/polaris-browser-bridge:
+    name: 浏览器桥接
+    summary: 一键设置 Chrome 扩展并自动配对，供浏览器与社交插件使用
+    description: Polaris Browser Bridge 浏览器扩展的一键设置：自动配对令牌（Native Messaging）、同步扩展文件与管理令牌。浏览器插件和社交插件依赖它复用你已登录的 Chrome。
+    topic: [websites, automation-workflows]
+    department: []
+  polarisagi/polaris-plugins-official/polaris-browser-use:
+    name: 浏览器操作
+    summary: 复用你已登录的 Chrome 阅读和操作网页，省 token
+    description: 通用浏览器插件：复用你日常已登录的 Chrome，读取网页正文、快照、点击、滚动与结构化提取，按需返回精简内容以节省 token。
+    topic: [websites, automation-workflows]
+  polarisagi/polaris-plugins-official/polaris-knowledge-base:
+    name: 资料库
+    summary: 把采集结果和摘要存成可检索的 Markdown 资料库
+    description: 把采集结果与摘要落成带 YAML 元信息头的 Markdown（兼容 Obsidian），按 URL 去重，支持全文检索、标签与整理。
+    topic: [notes-memory, files-documents]
+    life: [research]
+  polarisagi/polaris-plugins-official/polaris-social:
+    name: 社交平台
+    summary: 读取知乎、X、微博、小红书内容并跨平台发帖互动
+    description: 社交平台读写：知乎、X、微博、小红书的搜索、热榜、动态与正文读取（优先拦截接口数据，几乎不耗 token），以及多平台发帖与互动；读写共享按平台的限速与风控熔断。
+    topic: [email-messages]
+    department: [marketing]
+    life: [social-media, news]
