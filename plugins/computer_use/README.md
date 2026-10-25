@@ -1,5 +1,7 @@
 # Polaris Computer Use MCP
 
+🌎 [English](README.md) | 🇨🇳 [中文](README_zh.md)
+
 [![npm version](https://img.shields.io/npm/v/polaris-computer-mcp.svg)](https://www.npmjs.com/package/polaris-computer-mcp)
 
 An official Model Context Protocol (MCP) server plugin for [Polaris](https://polarisagi.online/), providing advanced, secure, and cross-platform desktop automation capabilities.

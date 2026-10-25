@@ -1,64 +1,65 @@
-# Polaris Browser Bridge 设置插件 (v1.0.0)
+# Polaris Browser Bridge Setup Plugin (v1.1.0)
 
-MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chrome 扩展的唯一源码与设置入口**：
-一键同步扩展到稳定目录、注册 Chrome Native Messaging 宿主以**自动配对令牌**、查看状态、轮换令牌。
-`polaris-browser-use` 与 `polaris-social` 在清单中依赖本插件。
+🌎 [English](README.md) | 🇨🇳 [中文](README_zh.md)
 
-> 本插件进程**不运行中继**；中继在使用浏览器的插件进程（browser-use / social）里。连接状态通过中继写入的
-> `~/.config/polaris-plugins/browser/bridge_last_handshake.json` 判断。
+MCP server name `polaris-browser-bridge`. It is the **sole source and setup entry for the Polaris Browser Bridge Chrome extension**:
+it syncs the extension to a stable directory in one click, registers the Chrome Native Messaging host to **pair the token automatically**, shows the status, and rotates the token.
+`polaris-browser-use` and `polaris-social` depend on this plugin in their manifests.
 
-## 首次设置（约 1 分钟）
+> This plugin's process **does not run the relay**; the relay lives in the process of the plugin that uses the browser (browser-use / social). The connection state is determined from
+> `~/.config/polaris-plugins/browser/bridge_last_handshake.json`, which the relay writes.
 
-1. 在 Polaris **插件页**点本插件（或依赖它的 browser-use / social）的「**设置**」按钮，直接打开设置卡片；也可以对 Polaris 说「**设置浏览器扩展**」（或调用 `bridge_setup`）。
-2. 点「打开 Chrome 扩展页」（或调用 `bridge_open_chrome_extensions`，macOS 会打开 `chrome://extensions` 并在 Finder 中定位扩展目录）。
-3. 在 Chrome 扩展页：开启右上角「开发者模式」→「加载已解压的扩展程序」（或把文件夹拖入页面）→ 选择
-   `~/.config/polaris-plugins/browser/extension/`。
-4. 等待状态灯变绿（扩展每 30 秒探测一次本地中继；需要有插件进程正在使用浏览器）。**无需粘贴令牌。**
+## First-Time Setup (about 1 minute)
 
-插件升级后重新执行一次 `bridge_setup` 即可把新版扩展同步到同一目录，路径不变；再在 `chrome://extensions` 点一下「重新加载」
-（或见下文开发者重载）。
+1. On the Polaris **plugins page**, click the "**Settings**" button of this plugin (or of a plugin that depends on it, browser-use / social) to open the setup card directly; you can also tell Polaris "**set up the browser extension**" (or call `bridge_setup`).
+2. Click "Open Chrome extensions page" (or call `bridge_open_chrome_extensions`; on macOS it opens `chrome://extensions` and reveals the extension directory in Finder).
+3. On the Chrome extensions page: turn on "Developer mode" in the top right → "Load unpacked" (or drag the folder onto the page) → select
+   `~/.config/polaris-plugins/browser/extension/`.
+4. Wait for the status light to turn green (the extension probes the local relay every 30 seconds; a plugin process must be using the browser). **There is no need to paste a token.**
 
-## Polaris 插件页集成
+After a plugin upgrade, simply run `bridge_setup` again to sync the new extension version to the same directory, with the path unchanged; then click "Reload" once in `chrome://extensions`
+(or see the developer reload below).
 
-清单 `.codex-plugin/plugin.json` 在私有命名空间声明：
+## Polaris Plugins Page Integration
+
+The manifest `.codex-plugin/plugin.json` declares in a private namespace:
 
 ```json
 "extensions": { "ai.polarisagi": { "setupTool": "bridge_setup", "statusTool": "bridge_status" } }
 ```
 
-- 「设置」按钮：Polaris 直接执行 `bridge_setup`（不经模型、不计 token），把设置卡片作为一条消息打开。
-- 状态：Polaris 调用 `bridge_status`，读取 `structuredContent.ready` / `message`。`ready` 表示**一次性设置已完成**：
-  本机已准备（令牌、扩展目录、自动配对宿主）且新版扩展曾成功握手、Chrome 中运行的版本与稳定目录一致；
-  不代表此刻已连接（中继只在使用浏览器的插件进程中运行）。未就绪时，依赖本插件的 browser-use / social 卡片会提示「需要完成设置」。
-- 清单快照在安装时记录：升级前已安装的 Polaris 需升级本插件才会出现「设置」按钮。
+- "Settings" button: Polaris runs `bridge_setup` directly (bypassing the model, consuming no tokens) and opens the setup card as a message.
+- Status: Polaris calls `bridge_status` and reads `structuredContent.ready` / `message`. `ready` means the **one-time setup is complete**:
+  this machine is prepared (token, extension directory, auto-pairing host), the new extension version has completed a handshake successfully, and the version running in Chrome matches the stable directory;
+  it does not mean it is connected right now (the relay only runs in the process of a plugin that uses the browser). When it is not ready, the browser-use / social cards that depend on this plugin show "Setup required".
+- The manifest snapshot is recorded at install time: a Polaris installed before the upgrade needs to upgrade this plugin before the "Settings" button appears.
 
-## 工具
+## Tools
 
-| 工具 | 说明 |
+| Tool | Description |
 |---|---|
-| `bridge_setup` | 一键：确保令牌 → 同步扩展到稳定目录 → 注册 Native Messaging 宿主；声明了设置卡片 `ui://polaris-browser-bridge/setup.html` |
-| `bridge_open_chrome_extensions` | macOS：`open -a "Google Chrome" chrome://extensions` + `open -R <扩展>/manifest.json`（argv 列表，不经 shell）；其他系统返回手动说明 |
-| `bridge_status` | 令牌是否存在/权限、宿主是否注册、扩展目录是否就绪与版本、扩展当前是否连接。**不返回令牌明文** |
-| `bridge_rotate_token` | 重新生成令牌（原子写、0600）；中继在下次握手/心跳时重读并断开旧连接，自动配对的扩展随后取新令牌 |
+| `bridge_setup` | One click: ensure the token → sync the extension to the stable directory → register the Native Messaging host; declares the setup card `ui://polaris-browser-bridge/setup.html` |
+| `bridge_open_chrome_extensions` | macOS: `open -a "Google Chrome" chrome://extensions` + `open -R <扩展>/manifest.json` (argv list, bypassing the shell); other systems return manual instructions |
+| `bridge_status` | Whether the token exists and its permissions, whether the host is registered, whether the extension directory is ready and its version, and whether the extension is currently connected. **Never returns the token in plaintext** |
+| `bridge_rotate_token` | Regenerates the token (atomic write, 0600); the relay rereads it at the next handshake/heartbeat and drops the old connection, after which the auto-paired extension fetches the new token |
 
-设置卡片是单文件 HTML（MCP Apps，`text/html;profile=mcp-app`），含三个按钮、三步说明和每 2 秒刷新的状态灯，适配深浅色。
+The setup card is a single-file HTML (MCP Apps, `text/html;profile=mcp-app`) with three buttons, three-step instructions, and a status light refreshed every 2 seconds, adapted to light and dark themes.
 
-## 自动配对如何工作
+## How Auto-Pairing Works
 
 ```
 扩展 sw.js ──chrome.runtime.sendNativeMessage──▶ 宿主 (online.polarisagi.bridge)
         ◀── {"ok":true,"token":…,"relay_ports":[18790..18799],"version":…}
 ```
 
-- 宿主清单：macOS `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/online.polarisagi.bridge.json`，
-  Linux `~/.config/google-chrome/NativeMessagingHosts/`，Windows 写 `HKCU\Software\Google\Chrome\NativeMessagingHosts\online.polarisagi.bridge`（**Windows 未经真机验证**）。
-- `allowed_origins` 只含扩展 ID `chrome-extension://ccdonkdehfibjcejkfjoicdklfdffjeh/`，其他扩展无法启动宿主。
-- 宿主可执行文件是 `~/.config/polaris-plugins/browser/native-host/run_host.sh`（0700），用 `bridge_setup` 时所在插件环境的
-  `sys.executable` **绝对路径**执行同目录的 `native_host.py`（仅标准库）。Chrome 启动宿主时 PATH 很少，所以不依赖 PATH。
-  若之后 uv 重建了环境导致解释器路径失效，重新执行 `bridge_setup` 即可。
-- 令牌文件 `~/.config/polaris-plugins/browser/bridge_token`（32 字节 hex，0600，原子创建）。
+- Host manifest: on macOS `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/online.polarisagi.bridge.json`,
+  on Linux `~/.config/google-chrome/NativeMessagingHosts/`, and on Windows it is written to `HKCU\Software\Google\Chrome\NativeMessagingHosts\online.polarisagi.bridge` (**Windows has not been verified on real hardware**).
+- `allowed_origins` contains only the extension ID `chrome-extension://ccdonkdehfibjcejkfjoicdklfdffjeh/`, so no other extension can launch the host.
+- The host executable is `~/.config/polaris-plugins/browser/native-host/run_host.sh` (0700), which uses the **absolute path** of the `sys.executable` of the plugin environment in which `bridge_setup` was run to execute the `native_host.py` in the same directory (standard library only). Chrome starts the host with very little PATH, so it does not rely on PATH.
+  If uv later rebuilds the environment and the interpreter path becomes invalid, simply run `bridge_setup` again.
+- Token file `~/.config/polaris-plugins/browser/bridge_token` (32-byte hex, 0600, created atomically).
 
-### 握手：双向 HMAC，令牌不上线路
+### Handshake: Mutual HMAC, the Token Never Goes on the Wire
 
 ```
 扩展 → 中继  hello_init {nonce}
@@ -67,23 +68,23 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 中继 校验后 → hello_ok
 ```
 
-扩展先确认对端持有令牌，才发出自己的证明，避免把凭据交给冒充中继的本地进程。旧版扩展（明文 `hello`+token）会被中继以
-`4426` 拒绝并在日志/握手状态里提示升级；新版扩展遇到旧中继（回 `Expected hello`）会在设置页显示「中继需要更新」。
+The extension first confirms that the peer holds the token before sending its own proof, which avoids handing the credential to a local process impersonating the relay. An old-version extension (plaintext `hello` + token) is rejected by the relay with
+`4426`, with an upgrade prompt in the log / handshake status; when a new-version extension meets an old relay (which replies `Expected hello`), it shows "Relay needs an update" on the settings page.
 
-## 故障排查
+## Troubleshooting
 
-| 现象 | 处理 |
+| Symptom | Resolution |
 |---|---|
-| 扩展设置页显示「自动配对不可用：Specified native messaging host not found」 | 宿主未注册：运行 `bridge_setup`，然后在设置页点「重新自动配对」 |
-| 「Native host has exited」 | `native-host/run_host.sh` 里的解释器路径失效：重新运行 `bridge_setup` |
-| 「中继需要更新」 | 更新 browser-use / social 插件并重启 Polaris |
-| 「中继身份校验失败」 | 令牌不一致或该端口上不是 Polaris 中继；点「重新自动配对」或运行 `bridge_rotate_token` |
-| 状态灯一直黄色 | 扩展已就绪但没有插件进程在跑中继：让 Polaris 打开任意网页触发一次浏览器工具；日志见 `bridge_ext.log` |
-| Windows / 其他浏览器 | 自动配对仅支持 Chrome；其他情况在扩展设置页手动粘贴令牌 |
+| The extension settings page shows "Auto-pairing unavailable: Specified native messaging host not found" | The host is not registered: run `bridge_setup`, then click "Re-pair automatically" on the settings page |
+| "Native host has exited" | The interpreter path in `native-host/run_host.sh` is invalid: run `bridge_setup` again |
+| "Relay needs an update" | Update the browser-use / social plugins and restart Polaris |
+| "Relay identity check failed" | The token does not match, or the port is not a Polaris relay; click "Re-pair automatically" or run `bridge_rotate_token` |
+| The status light stays yellow | The extension is ready but no plugin process is running the relay: have Polaris open any web page to trigger a browser tool once; see `bridge_ext.log` for logs |
+| Windows / other browsers | Auto-pairing supports Chrome only; in other cases paste the token manually on the extension settings page |
 
-## 开发者：修改扩展并重载
+## For Developers: Modify the Extension and Reload
 
-扩展唯一源码在 `plugins/browser_bridge/extension/`：
+The extension's sole source is in `plugins/browser_bridge/extension/`:
 
 ```bash
 # 1. 改完 extension/ 下的代码后，同步到稳定目录（等价于调用 bridge_setup 的同步步骤）
@@ -92,17 +93,17 @@ cd plugins/browser_bridge && uv run python -c "from src import setup_ops, paths;
 cd ../social && uv run python scripts/bridge_reload.py
 ```
 
-运行测试：`cd plugins/browser_bridge && uv run pytest -q tests`。
+Run the tests: `cd plugins/browser_bridge && uv run pytest -q tests`.
 
-## 签名私钥 `extension-signing-key.pem`
+## Signing Private Key `extension-signing-key.pem`
 
-`extension/manifest.json` 里的 `key` 字段是公钥，决定扩展 ID（`ccdonkdehfibjcejkfjoicdklfdffjeh`）。对应私钥**不在仓库里**：
-保管在 `~/.config/polaris-plugins/browser/extension-signing-key.pem`（0600，`.gitignore` 已忽略 `*.pem`）。
-丢失它不影响已有扩展运行，但以后无法再证明同一个扩展 ID 的所有权（例如上架商店）；请妥善备份，切勿提交或打包。
-`scripts/ext_id.py [pem 路径]` 可由私钥重新计算公钥和扩展 ID。
+The `key` field in `extension/manifest.json` is the public key, which determines the extension ID (`ccdonkdehfibjcejkfjoicdklfdffjeh`). The corresponding private key is **not in the repository**:
+it is kept at `~/.config/polaris-plugins/browser/extension-signing-key.pem` (0600; `*.pem` is ignored by `.gitignore`).
+Losing it does not affect extensions that already run, but you will no longer be able to prove ownership of the same extension ID later (for example to publish to a store); back it up carefully, and never commit or package it.
+`scripts/ext_id.py [pem 路径]` can recompute the public key and the extension ID from the private key.
 
-## 运行时文件
+## Runtime Files
 
-均位于 `~/.config/polaris-plugins/browser/`（Windows 为 `%APPDATA%\polaris-plugins\browser\`）：
-`bridge_token`、`extension/`、`native-host/`、`bridge_last_handshake.json`、`bridge_ext_seen`、`bridge_ext.log`。
-Chrome 侧只多一个宿主清单文件（见上）。
+All located in `~/.config/polaris-plugins/browser/` (on Windows `%APPDATA%\polaris-plugins\browser\`):
+`bridge_token`, `extension/`, `native-host/`, `bridge_last_handshake.json`, `bridge_ext_seen`, `bridge_ext.log`.
+Chrome gets just one extra file, the host manifest (see above).

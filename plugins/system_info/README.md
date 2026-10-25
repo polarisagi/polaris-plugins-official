@@ -1,5 +1,7 @@
 # Polaris System Info MCP
 
+🌎 [English](README.md) | 🇨🇳 [中文](README_zh.md)
+
 An official Model Context Protocol (MCP) server plugin for [Polaris](https://polarisagi.online/), providing cross-platform system environment and context awareness.
 
 ## Features

@@ -29,7 +29,7 @@
 
 ### 2a. [Browser Bridge (Python)](plugins/browser_bridge)
 
-**版本**：`v1.0.0`  
+**版本**：`v1.1.0`  
 **能力**：Polaris Browser Bridge Chrome 扩展的唯一源码；一键设置（`bridge_setup`）、Chrome Native Messaging 自动配对令牌（无需复制粘贴）、状态查看与令牌轮换，附 MCP Apps 设置卡片  
 **底层驱动**：Python、FastMCP 及 `uv`  
 **亮点**：`browser_use` 与 `social` 依赖本插件；双向 HMAC 握手，令牌不上线路
@@ -52,6 +52,12 @@
 **版本**：`v3.0.0`（原 `social_poster`，MCP 服务器 `polaris-social`）  
 **能力**：知乎 / X / 微博 / 小红书等平台的读（`social_search` / `social_hot` / `social_feed` / `social_read` / `social_platforms` / `social_selftest`）与写（发帖、互动、定时）  
 **特点**：0 Token 的 XHR 拦截站点配方；读写共享同一平台的限速与风控熔断
+
+### 5. [System Info (Python)](plugins/system_info)
+
+**版本**：`v1.0.0`（MCP 服务器 `polaris-systeminfo-mcp`）  
+**能力**：读取操作系统类型与版本、架构、语言区域和时区；`check_app_installed` 检查指定应用是否已安装（不扫描整个文件系统）  
+**亮点**：纯 Python、无外部依赖；**未上架 Polaris 插件市场**（不在 `.agents/plugins/marketplace.json` 中），可按「安装方式」手动配置
 
 ---
 
@@ -126,6 +132,11 @@ plugins/
     recipes/
     pyproject.toml
   knowledge_base/
+    .codex-plugin/plugin.json
+    .mcp.json                    # MCP 配置（command: uv）
+    src/main.py                  # Python MCP 服务端
+    pyproject.toml
+  system_info/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP 配置（command: uv）
     src/main.py                  # Python MCP 服务端

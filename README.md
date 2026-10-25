@@ -9,7 +9,7 @@
 **Polaris Plugins Official** is the official extension library for [Polaris AI Agent](https://github.com/polarisagi/polaris), fully compatible with:
 
 - **Anthropic MCP** (Model Context Protocol) — stdio JSON-RPC 2.0, protocol version `2024-11-05`
-- **OpenAI Codex Plugin** (`.codex-plugin/plugin.json` + `.mcp.json`) — current standard. Polaris 内核按 ADR-0103 读取 `.codex-plugin/` / `.claude-plugin/` / 根 `plugin.json`。
+- **OpenAI Codex Plugin** (`.codex-plugin/plugin.json` + `.mcp.json`) — current standard. The Polaris kernel reads `.codex-plugin/`, `.claude-plugin/`, and the root `plugin.json` (ADR-0103).
 
 > **Note**: The legacy `ai-plugin.json` format (ChatGPT Plugin Store) was deprecated in March 2024 and is not used here.
 
@@ -29,7 +29,7 @@
 
 ### 2a. [Browser Bridge (Python)](plugins/browser_bridge)
 
-**Version**: `v1.0.0`  
+**Version**: `v1.1.0`  
 **Capabilities**: Sole source of the Polaris Browser Bridge Chrome extension; one-click setup (`bridge_setup`), Chrome Native Messaging auto-pairing (no token copy/paste), status and token rotation, with an MCP Apps setup card  
 **Powered by**: Python, FastMCP and `uv`  
 **Highlights**: `browser_use` and `social` depend on it; mutual HMAC handshake (the token never travels over the wire)
@@ -52,6 +52,12 @@
 **Version**: `v3.0.0` (formerly `social_poster`; MCP server `polaris-social`)  
 **Capabilities**: Read (`social_search` / `social_hot` / `social_feed` / `social_read` / `social_platforms` / `social_selftest`) and write (post, interact, schedule) for Zhihu, X, Weibo, Xiaohongshu and more  
 **Highlights**: Zero-token XHR-intercepting site recipes; reads and writes share one per-platform rate limit and block-signal cooldown
+
+### 5. [System Info (Python)](plugins/system_info)
+
+**Version**: `v1.0.0` (MCP server `polaris-systeminfo-mcp`)  
+**Capabilities**: Reads the OS type and version, architecture, locale and timezone; `check_app_installed` checks whether a given application is installed (without scanning the entire filesystem)  
+**Highlights**: Pure Python with no external dependencies; **not listed in the Polaris plugin marketplace** (it is not in `.agents/plugins/marketplace.json`) — configure it manually as described under Installation
 
 ---
 
@@ -126,6 +132,11 @@ plugins/
     recipes/
     pyproject.toml
   knowledge_base/
+    .codex-plugin/plugin.json
+    .mcp.json                    # MCP server config (command: uv)
+    src/main.py                  # Python MCP server
+    pyproject.toml
+  system_info/
     .codex-plugin/plugin.json
     .mcp.json                    # MCP server config (command: uv)
     src/main.py                  # Python MCP server
