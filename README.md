@@ -65,7 +65,7 @@
 
 ### Step 1: Prerequisites
 
-Ensure you have **Python 3.10+** and **uv** (Astral's fast Python package manager) installed on your system.
+Ensure you have **Python ≥ 3.14** and **uv** (Astral's fast Python package manager) installed on your system.
 
 ### Step 2: Configure your agent
 
@@ -80,6 +80,10 @@ Add to `~/.claude.json`:
       "command": "uv",
       "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/computer_use/src/main.py"]
     },
+    "polaris-browser-bridge": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_bridge", "python", "-m", "src.main"]
+    },
     "polaris-browser-use": {
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_use", "python", "-m", "src.main"]
@@ -88,6 +92,14 @@ Add to `~/.claude.json`:
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base", "python", "-m", "src.main"],
       "env": { "POLARIS_KB_ALLOWED_DIR": "/your/allowed/dir" }
+    },
+    "polaris-social": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/social", "python", "-m", "src.main"]
+    },
+    "polaris-systeminfo-mcp": {
+      "command": "uv",
+      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/system_info/src/main.py"]
     }
   }
 }

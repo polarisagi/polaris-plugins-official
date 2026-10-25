@@ -65,7 +65,7 @@
 
 ### 第一步：环境准备
 
-请确保你的系统上已经安装了 **Python 3.10+** 和 **uv** (Astral 出品的极速 Python 包管理器)。
+请确保你的系统上已经安装了 **Python ≥ 3.14** 和 **uv** (Astral 出品的极速 Python 包管理器)。
 
 ### 第二步：配置你的 Agent
 
@@ -80,6 +80,10 @@
       "command": "uv",
       "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/computer_use/src/main.py"]
     },
+    "polaris-browser-bridge": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_bridge", "python", "-m", "src.main"]
+    },
     "polaris-browser-use": {
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/browser_use", "python", "-m", "src.main"]
@@ -88,6 +92,14 @@
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/knowledge_base", "python", "-m", "src.main"],
       "env": { "POLARIS_KB_ALLOWED_DIR": "/your/allowed/dir" }
+    },
+    "polaris-social": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/polaris-plugins-official/plugins/social", "python", "-m", "src.main"]
+    },
+    "polaris-systeminfo-mcp": {
+      "command": "uv",
+      "args": ["run", "/absolute/path/to/polaris-plugins-official/plugins/system_info/src/main.py"]
     }
   }
 }

@@ -32,4 +32,4 @@ Configure your AI agent with the following MCP server setting:
 ```
 
 ## Requirements
-- Python 3.8 or newer.
+- Python ≥ 3.14.

@@ -39,7 +39,7 @@ The manifest `.codex-plugin/plugin.json` declares in a private namespace:
 | Tool | Description |
 |---|---|
 | `bridge_setup` | One click: ensure the token → sync the extension to the stable directory → register the Native Messaging host; declares the setup card `ui://polaris-browser-bridge/setup.html` |
-| `bridge_open_chrome_extensions` | macOS: `open -a "Google Chrome" chrome://extensions` + `open -R <扩展>/manifest.json` (argv list, bypassing the shell); other systems return manual instructions |
+| `bridge_open_chrome_extensions` | macOS: `open -a "Google Chrome" chrome://extensions` + `open -R <extension-dir>/manifest.json` (argv list, bypassing the shell); other systems return manual instructions |
 | `bridge_status` | Whether the token exists and its permissions, whether the host is registered, whether the extension directory is ready and its version, and whether the extension is currently connected. **Never returns the token in plaintext** |
 | `bridge_rotate_token` | Regenerates the token (atomic write, 0600); the relay rereads it at the next handshake/heartbeat and drops the old connection, after which the auto-paired extension fetches the new token |
 
@@ -100,7 +100,7 @@ Run the tests: `cd plugins/browser_bridge && uv run pytest -q tests`.
 The `key` field in `extension/manifest.json` is the public key, which determines the extension ID (`ccdonkdehfibjcejkfjoicdklfdffjeh`). The corresponding private key is **not in the repository**:
 it is kept at `~/.config/polaris-plugins/browser/extension-signing-key.pem` (0600; `*.pem` is ignored by `.gitignore`).
 Losing it does not affect extensions that already run, but you will no longer be able to prove ownership of the same extension ID later (for example to publish to a store); back it up carefully, and never commit or package it.
-`scripts/ext_id.py [pem 路径]` can recompute the public key and the extension ID from the private key.
+`scripts/ext_id.py [path-to-pem]` can recompute the public key and the extension ID from the private key.
 
 ## Runtime Files
 

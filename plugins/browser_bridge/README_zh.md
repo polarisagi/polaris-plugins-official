@@ -39,7 +39,7 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 | 工具 | 说明 |
 |---|---|
 | `bridge_setup` | 一键：确保令牌 → 同步扩展到稳定目录 → 注册 Native Messaging 宿主；声明了设置卡片 `ui://polaris-browser-bridge/setup.html` |
-| `bridge_open_chrome_extensions` | macOS：`open -a "Google Chrome" chrome://extensions` + `open -R <扩展>/manifest.json`（argv 列表，不经 shell）；其他系统返回手动说明 |
+| `bridge_open_chrome_extensions` | macOS：`open -a "Google Chrome" chrome://extensions` + `open -R <extension-dir>/manifest.json`（argv 列表，不经 shell）；其他系统返回手动说明 |
 | `bridge_status` | 令牌是否存在/权限、宿主是否注册、扩展目录是否就绪与版本、扩展当前是否连接。**不返回令牌明文** |
 | `bridge_rotate_token` | 重新生成令牌（原子写、0600）；中继在下次握手/心跳时重读并断开旧连接，自动配对的扩展随后取新令牌 |
 
@@ -101,7 +101,7 @@ cd ../social && uv run python scripts/bridge_reload.py
 `extension/manifest.json` 里的 `key` 字段是公钥，决定扩展 ID（`ccdonkdehfibjcejkfjoicdklfdffjeh`）。对应私钥**不在仓库里**：
 保管在 `~/.config/polaris-plugins/browser/extension-signing-key.pem`（0600，`.gitignore` 已忽略 `*.pem`）。
 丢失它不影响已有扩展运行，但以后无法再证明同一个扩展 ID 的所有权（例如上架商店）；请妥善备份，切勿提交或打包。
-`scripts/ext_id.py [pem 路径]` 可由私钥重新计算公钥和扩展 ID。
+`scripts/ext_id.py [path-to-pem]` 可由私钥重新计算公钥和扩展 ID。
 
 ## 运行时文件
 

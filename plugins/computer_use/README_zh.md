@@ -2,8 +2,6 @@
 
 🌎 [English](README.md) | 🇨🇳 [中文](README_zh.md)
 
-[![npm version](https://img.shields.io/npm/v/polaris-computer-mcp.svg)](https://www.npmjs.com/package/polaris-computer-mcp)
-
 [Polaris](https://polarisagi.online/) 官方的 Model Context Protocol（MCP）服务器插件，提供先进、安全、跨平台的桌面自动化能力。
 
 ## 核心特性
@@ -44,7 +42,7 @@
 ```
 
 ## 要求
-- Python 3.10+
+- Python ≥ 3.14
 - `uv`（Astral 出品的 Python 包管理器）
 
 **可选依赖（用于 UI 树解析）：**
