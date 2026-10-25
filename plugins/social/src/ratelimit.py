@@ -45,13 +45,42 @@ def get_db_path() -> Path:
     return CFG / "ratelimit.db"
 
 
+def _ensure_wal(conn: sqlite3.Connection, deadline_s: float = 5.0) -> None:
+    """确保数据库处于 WAL 模式；遇到锁冲突时显式退避重试。
+
+    为什么需要显式重试：切换到 WAL 需要锁升级，这一步不经过 SQLite 的 busy handler
+    （timeout / busy_timeout 均不生效）。多个进程并发初始化同一个新库时，
+    后到的进程会立即收到 "database is locked"，只能由调用方自行重试。
+    """
+    mode = conn.execute("PRAGMA journal_mode;").fetchone()[0]
+    if str(mode).lower() == "wal":
+        # 读取模式不需要独占锁；已是 WAL（例如别的进程已切换完成）则无需再切换
+        return
+
+    deadline = time.monotonic() + deadline_s
+    backoff = 0.02
+    while True:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            return
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e).lower() or time.monotonic() >= deadline:
+                raise
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 0.25)
+
+
 def init_db(db_path: Path | None = None) -> sqlite3.Connection:
     """初始化数据库并应用 WAL 模式与表结构。"""
     path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=5.0, isolation_level=None)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=5000;")
+    try:
+        conn.execute("PRAGMA busy_timeout=5000;")
+        _ensure_wal(conn)
+    except Exception:
+        conn.close()
+        raise
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS site_requests(

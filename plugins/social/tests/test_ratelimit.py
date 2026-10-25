@@ -15,6 +15,7 @@ import multiprocessing
 import os
 import sqlite3
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from src.ratelimit import (
     Limits,
     acquire,
     get_site_status,
+    init_db,
     is_in_active_hours,
     mark_blocked,
 )
@@ -162,3 +164,30 @@ def test_multiprocessing_acquire() -> None:
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
+
+
+def test_init_db_waits_for_wal_lock(tmp_path: Path) -> None:
+    # 另一连接持有写锁（RESERVED）时，新库的 WAL 切换不经过 busy handler、会立即 locked；
+    # init_db 必须重试到锁释放而不是报错。（BEGIN EXCLUSIVE 会走 busy handler，无法复现。）
+    db = tmp_path / "locked.db"
+    holder = sqlite3.connect(str(db), isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE;")
+    released = threading.Event()
+
+    def release() -> None:
+        time.sleep(0.3)
+        holder.execute("COMMIT;")
+        holder.close()
+        released.set()
+
+    t = threading.Thread(target=release)
+    t.start()
+    try:
+        conn = init_db(db)
+        try:
+            assert conn.execute("PRAGMA journal_mode;").fetchone()[0].lower() == "wal"
+        finally:
+            conn.close()
+    finally:
+        t.join(timeout=5)
+    assert released.is_set()
