@@ -7,6 +7,7 @@ __pycache__/
 *.dll
 .DS_Store
 bake/
+.claude/
 
 # Go binary
 plugins/knowledge_base/knowledge_base
