@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +98,12 @@ def setup_card() -> str:
 
 
 def main() -> None:
-    """启动 MCP 服务端。"""
+    """启动 MCP 服务端。启动前静默刷新已设置过的扩展目录与宿主（重装/升级后无需再点设置）。"""
+    try:
+        setup_ops.refresh_installed(_paths())
+    except OSError as e:
+        # stdout 是 MCP 协议通道，诊断只能写 stderr
+        print(f"browser_bridge: refresh on start failed: {e}", file=sys.stderr)
     mcp.run()
 
 

@@ -118,3 +118,28 @@ def test_host_subprocess_end_to_end(tmp_path: Path):
     assert token_file.read_text() == resp["token"]
     assert stat.S_IMODE(token_file.stat().st_mode) == 0o600
     json.dumps(resp)
+
+
+def test_hello_records_presence_and_token_match(tmp_path: Path):
+    """扩展报到：宿主记录在场信息，令牌只以指纹比对，应答不含令牌明文。"""
+    token = native_host.get_or_create_token(tmp_path)
+    fp = native_host.token_fingerprint(token)
+    resp = native_host.handle_request(
+        {"type": "hello", "ext_version": "1.3.0", "token_fp": fp}, tmp_path
+    )
+    assert (
+        resp["ok"] is True and resp["token_fp"] == fp and token not in json.dumps(resp)
+    )
+    rec = json.loads((tmp_path / native_host.PRESENCE_FILE).read_text(encoding="utf-8"))
+    assert rec["ext_version"] == "1.3.0" and rec["token_match"] is True
+    assert (tmp_path / native_host.EXT_SEEN_FILE).exists()
+
+    native_host.handle_request(
+        {"type": "hello", "ext_version": "1.3.0", "token_fp": "0" * 16}, tmp_path
+    )
+    rec = json.loads((tmp_path / native_host.PRESENCE_FILE).read_text(encoding="utf-8"))
+    assert rec["token_match"] is False
+
+    native_host.handle_request({"type": "hello", "ext_version": "1.3.0"}, tmp_path)
+    rec = json.loads((tmp_path / native_host.PRESENCE_FILE).read_text(encoding="utf-8"))
+    assert rec["token_match"] is None

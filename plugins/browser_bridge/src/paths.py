@@ -83,6 +83,11 @@ class BridgePaths:
         return self.cfg / HANDSHAKE_FILE
 
     @property
+    def presence_file(self) -> Path:
+        """扩展经 Native Messaging 报到时由宿主写入（见 native_host.record_presence）。"""
+        return self.cfg / "bridge_ext_presence.json"
+
+    @property
     def ext_seen_file(self) -> Path:
         return self.cfg / "bridge_ext_seen"
 

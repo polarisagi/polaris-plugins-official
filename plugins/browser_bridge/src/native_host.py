@@ -7,7 +7,12 @@ Native Messaging 启动一个本地进程并与之交换 JSON；本宿主据此�
 其他扩展 / 网页无法启动本宿主。
 
 协议（Chrome Native Messaging）：每条消息 = 4 字节小端长度 + UTF-8 JSON。
-支持的请求：{"type": "get_pairing"} → {"ok": true, "token", "relay_ports", "version"}。
+支持的请求：
+- {"type": "get_pairing"} → {"ok": true, "token", "relay_ports", "version"}
+- {"type": "hello", "ext_version", "token_fp"} → {"ok": true, "token_fp", "version"}：扩展报到。
+  宿主记录扩展在场信息（bridge_ext_presence.json）供状态判定——此前只有中继握手能证明扩展已加载，
+  只装 browser_bridge 时没有中继，状态永远是「未握手」。token_fp 为令牌 SHA-256 前 16 位，
+  扩展据此发现本机令牌已变化并自动重新配对；令牌明文不出现在报到往返里。
 
 本文件会被复制到 ~/.config/polaris-plugins/browser/native-host/ 由包装脚本调用，
 因此不得依赖插件内其他模块；令牌创建规则须与 bridge_relay.get_or_create_token 保持一致。
@@ -15,6 +20,7 @@ Native Messaging 启动一个本地进程并与之交换 JSON；本宿主据此�
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -25,7 +31,9 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO
 
-HOST_VERSION = "1.0.0"
+HOST_VERSION = "1.1.0"
+PRESENCE_FILE = "bridge_ext_presence.json"
+EXT_SEEN_FILE = "bridge_ext_seen"
 RELAY_PORTS = list(range(18790, 18800))
 # Chrome 规定宿主发往浏览器的单条消息不得超过 1 MiB，浏览器发给宿主的不得超过 4 GiB；本宿主只收小消息
 MAX_INCOMING = 64 * 1024
@@ -86,6 +94,27 @@ def write_token_atomic(token: str, cfg: Path | None = None) -> None:
         raise
 
 
+def token_fingerprint(token: str) -> str:
+    """令牌指纹：SHA-256 前 16 位 hex。用于比对一致性，不可反推令牌。"""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+
+
+def record_presence(cfg: Path, ext_version: str, token_match: bool | None) -> None:
+    """原子写入扩展在场记录；首次报到同时创建 bridge_ext_seen（与中继同语义）。"""
+    data = {
+        "ts": time.time(),
+        "ext_version": ext_version[:32],
+        "token_match": token_match,
+        "host_version": HOST_VERSION,
+    }
+    cfg.mkdir(parents=True, exist_ok=True)
+    target = cfg / PRESENCE_FILE
+    tmp = target.with_name(f".{PRESENCE_FILE}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, target)
+    (cfg / EXT_SEEN_FILE).touch(exist_ok=True)
+
+
 def encode_message(obj: Any) -> bytes:
     """编码一条 Native Messaging 消息：4 字节小端长度 + UTF-8 JSON。"""
     body = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -121,6 +150,22 @@ def handle_request(msg: Any, cfg: Path | None = None) -> dict[str, Any]:
             "relay_ports": RELAY_PORTS,
             "version": HOST_VERSION,
         }
+    if msg.get("type") == "hello":
+        c = cfg or cfg_dir()
+        try:
+            fp = token_fingerprint(get_or_create_token(c))
+        except OSError as e:
+            return {"ok": False, "error": f"token_unavailable: {e.__class__.__name__}"}
+        ext_fp = msg.get("token_fp")
+        match = ext_fp == fp if isinstance(ext_fp, str) and ext_fp else None
+        try:
+            record_presence(c, str(msg.get("ext_version") or ""), match)
+        except OSError as e:
+            return {
+                "ok": False,
+                "error": f"presence_unwritable: {e.__class__.__name__}",
+            }
+        return {"ok": True, "token_fp": fp, "version": HOST_VERSION}
     return {"ok": False, "error": "unknown_type"}
 
 

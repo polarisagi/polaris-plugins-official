@@ -15,10 +15,11 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 2. 点「打开 Chrome 扩展页」（或调用 `bridge_open_chrome_extensions`，macOS 会打开 `chrome://extensions` 并在 Finder 中定位扩展目录）。
 3. 在 Chrome 扩展页：开启右上角「开发者模式」→「加载已解压的扩展程序」（或把文件夹拖入页面）→ 选择
    `~/.config/polaris-plugins/browser/extension/`。
-4. 等待状态灯变绿（扩展每 30 秒探测一次本地中继；需要有插件进程正在使用浏览器）。**无需粘贴令牌。**
+4. 加载后扩展立即经 Native Messaging 自动配对并向本机报到，状态变为「设置已完成」。**无需粘贴令牌。**
+   浏览器连接（中继）只在 browser-use / social 等插件使用浏览器时建立，空闲时不连接属正常。
 
-插件升级后重新执行一次 `bridge_setup` 即可把新版扩展同步到同一目录，路径不变；再在 `chrome://extensions` 点一下「重新加载」
-（或见下文开发者重载）。
+插件重装或升级后，插件进程启动时会自动把新版扩展同步到同一目录并刷新宿主（曾设置过才会刷新），无需再点设置；
+扩展版本变化时在 `chrome://extensions` 点一下「重新加载」（或见下文开发者重载）。
 
 ## Polaris 插件页集成
 
@@ -28,9 +29,9 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 "extensions": { "ai.polarisagi": { "setupTool": "bridge_setup", "statusTool": "bridge_status" } }
 ```
 
-- 「设置」按钮：Polaris 直接执行 `bridge_setup`（不经模型、不计 token），把设置卡片作为一条消息打开。
-- 状态：Polaris 调用 `bridge_status`，读取 `structuredContent.ready` / `message`。`ready` 表示**一次性设置已完成**：
-  本机已准备（令牌、扩展目录、自动配对宿主）且新版扩展曾成功握手、Chrome 中运行的版本与稳定目录一致；
+- 「设置」：Polaris 插件详情页的「设置」页直接嵌入设置卡片并显示逐项状态（不经模型、不计 token、不新建会话）。
+- 状态：Polaris 调用 `bridge_status`，读取 `structuredContent.ready` / `message` / `checks`（逐项清单 `{key,label,ok,detail}`，`ok=null` 仅供参考）。`ready` 表示**一次性设置已完成**：
+  本机已准备（令牌、扩展目录、自动配对宿主）、Chrome 中运行的扩展版本与稳定目录一致（证据取扩展报到与中继握手中较新者）、扩展令牌与本机一致；
   不代表此刻已连接（中继只在使用浏览器的插件进程中运行）。未就绪时，依赖本插件的 browser-use / social 卡片会提示「需要完成设置」。
 - 清单快照在安装时记录：升级前已安装的 Polaris 需升级本插件才会出现「设置」按钮。
 
@@ -50,14 +51,19 @@ MCP 服务器名 `polaris-browser-bridge`。它是 **Polaris Browser Bridge Chro
 ```
 扩展 sw.js ──chrome.runtime.sendNativeMessage──▶ 宿主 (online.polarisagi.bridge)
         ◀── {"ok":true,"token":…,"relay_ports":[18790..18799],"version":…}
+扩展 sw.js ──{"type":"hello","ext_version","token_fp"}──▶ 宿主   # 启动时与每 5 分钟报到
+        ◀── {"ok":true,"token_fp":…}                              # 指纹不同 → 扩展重新配对
 ```
+
+- 报到由宿主写入 `bridge_ext_presence.json`（时间、扩展版本、令牌是否一致），不依赖中继即可判断扩展已加载。
+  令牌只以 SHA-256 前 16 位指纹比对，明文不出现在报到往返中。
 
 - 宿主清单：macOS `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/online.polarisagi.bridge.json`，
   Linux `~/.config/google-chrome/NativeMessagingHosts/`，Windows 写 `HKCU\Software\Google\Chrome\NativeMessagingHosts\online.polarisagi.bridge`（**Windows 未经真机验证**）。
 - `allowed_origins` 只含扩展 ID `chrome-extension://ccdonkdehfibjcejkfjoicdklfdffjeh/`，其他扩展无法启动宿主。
-- 宿主可执行文件是 `~/.config/polaris-plugins/browser/native-host/run_host.sh`（0700），用 `bridge_setup` 时所在插件环境的
-  `sys.executable` **绝对路径**执行同目录的 `native_host.py`（仅标准库）。Chrome 启动宿主时 PATH 很少，所以不依赖 PATH。
-  若之后 uv 重建了环境导致解释器路径失效，重新执行 `bridge_setup` 即可。
+- 宿主可执行文件是 `~/.config/polaris-plugins/browser/native-host/run_host.sh`（0700），以插件环境的**基础解释器**
+  （`sys._base_executable`，不是插件 `.venv`）绝对路径执行同目录的 `native_host.py`（仅标准库）。Chrome 启动宿主时 PATH 很少，所以不依赖 PATH；
+  不用 `.venv` 是因为它随插件重装而删除。`bridge_status` 会检查解释器是否存在、宿主脚本是否与插件内版本一致。
 - 令牌文件 `~/.config/polaris-plugins/browser/bridge_token`（32 字节 hex，0600，原子创建）。
 
 ### 握手：双向 HMAC，令牌不上线路

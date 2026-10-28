@@ -15,10 +15,11 @@ it syncs the extension to a stable directory in one click, registers the Chrome 
 2. Click "Open Chrome extensions page" (or call `bridge_open_chrome_extensions`; on macOS it opens `chrome://extensions` and reveals the extension directory in Finder).
 3. On the Chrome extensions page: turn on "Developer mode" in the top right → "Load unpacked" (or drag the folder onto the page) → select
    `~/.config/polaris-plugins/browser/extension/`.
-4. Wait for the status light to turn green (the extension probes the local relay every 30 seconds; a plugin process must be using the browser). **There is no need to paste a token.**
+4. Once loaded, the extension pairs automatically over Native Messaging and checks in with this machine; the status becomes "Setup complete". **There is no need to paste a token.**
+   The browser connection (relay) is only established while browser-use / social or another plugin is using the browser; being idle is normal.
 
-After a plugin upgrade, simply run `bridge_setup` again to sync the new extension version to the same directory, with the path unchanged; then click "Reload" once in `chrome://extensions`
-(or see the developer reload below).
+After a plugin reinstall or upgrade, the plugin process syncs the new extension to the same directory and refreshes the host on start (only if setup was done before), so there is no need to run setup again;
+when the extension version changes, click "Reload" once in `chrome://extensions` (or see the developer reload below).
 
 ## Polaris Plugins Page Integration
 
@@ -28,9 +29,9 @@ The manifest `.codex-plugin/plugin.json` declares in a private namespace:
 "extensions": { "ai.polarisagi": { "setupTool": "bridge_setup", "statusTool": "bridge_status" } }
 ```
 
-- "Settings" button: Polaris runs `bridge_setup` directly (bypassing the model, consuming no tokens) and opens the setup card as a message.
-- Status: Polaris calls `bridge_status` and reads `structuredContent.ready` / `message`. `ready` means the **one-time setup is complete**:
-  this machine is prepared (token, extension directory, auto-pairing host), the new extension version has completed a handshake successfully, and the version running in Chrome matches the stable directory;
+- "Settings": the Settings tab of the Polaris plugin details embeds the setup card and shows item-by-item status (bypassing the model, consuming no tokens, creating no conversation).
+- Status: Polaris calls `bridge_status` and reads `structuredContent.ready` / `message` / `checks` (an item list `{key,label,ok,detail}`; `ok=null` is informational). `ready` means the **one-time setup is complete**:
+  this machine is prepared (token, extension directory, auto-pairing host), the extension version running in Chrome matches the stable directory (evidence is the newer of the extension check-in and the relay handshake), and the extension token matches this machine;
   it does not mean it is connected right now (the relay only runs in the process of a plugin that uses the browser). When it is not ready, the browser-use / social cards that depend on this plugin show "Setup required".
 - The manifest snapshot is recorded at install time: a Polaris installed before the upgrade needs to upgrade this plugin before the "Settings" button appears.
 
@@ -50,13 +51,18 @@ The setup card is a single-file HTML (MCP Apps, `text/html;profile=mcp-app`) wit
 ```
 扩展 sw.js ──chrome.runtime.sendNativeMessage──▶ 宿主 (online.polarisagi.bridge)
         ◀── {"ok":true,"token":…,"relay_ports":[18790..18799],"version":…}
+extension sw.js ──{"type":"hello","ext_version","token_fp"}──▶ host   # on start and every 5 minutes
+        ◀── {"ok":true,"token_fp":…}                               # fingerprint differs → extension re-pairs
 ```
+
+- The check-in is recorded by the host in `bridge_ext_presence.json` (time, extension version, whether the token matches), so the extension can be seen as loaded without a relay.
+  The token is compared only by its SHA-256 16-hex-digit fingerprint; the plaintext never travels in the check-in.
 
 - Host manifest: on macOS `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/online.polarisagi.bridge.json`,
   on Linux `~/.config/google-chrome/NativeMessagingHosts/`, and on Windows it is written to `HKCU\Software\Google\Chrome\NativeMessagingHosts\online.polarisagi.bridge` (**Windows has not been verified on real hardware**).
 - `allowed_origins` contains only the extension ID `chrome-extension://ccdonkdehfibjcejkfjoicdklfdffjeh/`, so no other extension can launch the host.
-- The host executable is `~/.config/polaris-plugins/browser/native-host/run_host.sh` (0700), which uses the **absolute path** of the `sys.executable` of the plugin environment in which `bridge_setup` was run to execute the `native_host.py` in the same directory (standard library only). Chrome starts the host with very little PATH, so it does not rely on PATH.
-  If uv later rebuilds the environment and the interpreter path becomes invalid, simply run `bridge_setup` again.
+- The host executable is `~/.config/polaris-plugins/browser/native-host/run_host.sh` (0700), which uses the **absolute path** of the plugin environment's **base interpreter** (`sys._base_executable`, not the plugin `.venv`) to execute the `native_host.py` in the same directory (standard library only). Chrome starts the host with very little PATH, so it does not rely on PATH;
+  the `.venv` is avoided because it is deleted when the plugin is reinstalled. `bridge_status` checks that the interpreter exists and that the host script matches the plugin's version.
 - Token file `~/.config/polaris-plugins/browser/bridge_token` (32-byte hex, 0600, created atomically).
 
 ### Handshake: Mutual HMAC, the Token Never Goes on the Wire

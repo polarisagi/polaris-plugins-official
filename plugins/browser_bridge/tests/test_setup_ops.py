@@ -65,7 +65,8 @@ def test_run_setup_produces_all_artifacts(paths: BridgePaths, monkeypatch):
     assert paths.host_script.is_file()
     # 返回值不含令牌明文
     assert paths.token_file.read_text() not in json.dumps(res)
-    assert res["host"]["registered"] is True
+    # 包装脚本里的解释器不存在：宿主必须判为失效，而不是「已注册」
+    assert res["host"]["registered"] is False and res["host"]["python_ok"] is False
 
 
 def test_run_setup_is_idempotent(paths: BridgePaths):
@@ -265,3 +266,58 @@ def test_version_tuple() -> None:
     assert setup_ops._version_tuple("1.10.0") > setup_ops._version_tuple("1.9.9")
     assert setup_ops._version_tuple(None) == ()
     assert setup_ops._version_tuple("x") == ()
+
+
+def _write_presence(
+    paths: BridgePaths, ver: str, token_match: bool | None = True
+) -> None:
+    paths.presence_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.presence_file.write_text(
+        json.dumps({"ts": time.time(), "ext_version": ver, "token_match": token_match}),
+        encoding="utf-8",
+    )
+
+
+def test_ready_from_presence_without_relay(paths: BridgePaths) -> None:
+    """只装 browser_bridge、没有中继时，扩展报到即可判定设置完成；连接一项只作参考。"""
+    setup_ops.run_setup(paths, python=sys.executable)
+    ver = setup_ops.build_status(paths)["extension"]["version"]
+    _write_presence(paths, ver)
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is True and "设置已完成" in st["message"]
+    checks = {c["key"]: c for c in st["checks"]}
+    assert checks["loaded"]["ok"] is True and checks["connection"]["ok"] is None
+    assert all(c["ok"] is not False for c in st["checks"])
+
+
+def test_not_ready_when_extension_token_mismatch(paths: BridgePaths) -> None:
+    setup_ops.run_setup(paths, python=sys.executable)
+    ver = setup_ops.build_status(paths)["extension"]["version"]
+    _write_presence(paths, ver, token_match=False)
+    st = setup_ops.build_status(paths)
+    assert st["ready"] is False and "令牌" in st["message"]
+
+
+def test_host_stale_script_not_registered(paths: BridgePaths) -> None:
+    """插件升级后宿主脚本未更新：不能报「已注册」。"""
+    setup_ops.run_setup(paths, python=sys.executable)
+    paths.host_script.write_text("# old", encoding="utf-8")
+    host = setup_ops.host_info(paths)
+    assert host["registered"] is False and host["script_in_sync"] is False
+
+
+def test_refresh_installed_only_after_first_setup(paths: BridgePaths) -> None:
+    assert setup_ops.refresh_installed(paths) is None
+    assert not paths.ext_dir.exists()
+    setup_ops.run_setup(paths, python=sys.executable)
+    paths.host_script.write_text("# old", encoding="utf-8")
+    assert setup_ops.refresh_installed(paths) is not None
+    assert setup_ops.host_info(paths)["script_in_sync"] is True
+
+
+def test_host_python_prefers_base_interpreter() -> None:
+    py = setup_ops.host_python()
+    assert Path(py).is_file()
+    base = getattr(sys, "_base_executable", "")
+    if base and Path(base).is_file():
+        assert py == base

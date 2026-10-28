@@ -66,7 +66,7 @@
   </ol>
   <div class="meta">扩展目录：<code id="extDir">（尚未准备，请先点「准备扩展」）</code></div>
 </div>
-<div class="meta" id="detail"></div>
+<div class="meta" id="detail" style="white-space:pre-line"></div>
 
 <script>
 "use strict";
@@ -147,13 +147,11 @@ function render(st) {
   if (ext.ready) $("extDir").textContent = ext.dir;
   const done = { devmode: !!(c.connected || st.ready), load: !!(c.connected || st.ready), connect: !!(c.connected || st.ready) };
   document.querySelectorAll("#steps li").forEach((li) => li.classList.toggle("done", !!done[li.dataset.k]));
-  const bits = [];
-  bits.push("自动配对宿主：" + (host.supported === false ? "当前系统不支持（需手动粘贴令牌）" : host.registered ? "已注册" : "未注册"));
-  bits.push("令牌：" + (st.token && st.token.exists ? "已就绪" : "未生成"));
-  if (ext.ready && !ext.in_sync) bits.push("扩展目录落后于插件内版本，请再点「准备扩展」");
-  if (c.last_handshake_at) bits.push("最近握手：" + c.last_handshake_at);
-  if (!st.ready && st.message) bits.unshift(st.message);
-  $("detail").textContent = bits.join(" · ");
+  // 逐项清单与 Polaris 插件详情页「设置」页同源（bridge_status.checks）；ok=null 仅供参考
+  const lines = (st.checks || []).map((k) => (k.ok === true ? "✓ " : k.ok === false ? "✗ " : "· ") + k.label + "：" + k.detail);
+  if (!st.ready && st.message) lines.unshift(st.message);
+  if (ext.ready && !ext.in_sync) lines.push("扩展目录落后于插件内版本，请再点「准备扩展」");
+  $("detail").textContent = lines.join("\n");
 }
 
 async function poll() {

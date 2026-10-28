@@ -140,6 +140,37 @@ function randomHex(bytes) {
   return toHex(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
+// ── 报到：向本机宿主证明扩展已加载，并核对令牌 ─────────────────────────────
+// 中继只在使用浏览器的插件进程里运行；没有中继时，宿主是唯一能感知扩展在场的本机进程。
+// 报到不传令牌明文，只传 SHA-256 前 16 位指纹；宿主指纹不同即说明本机令牌已轮换/重建，
+// 此时主动重新配对，而不是等下一次中继握手被拒。
+const PRESENCE_INTERVAL_MS = 5 * 60 * 1000;
+
+async function tokenFingerprint(token) {
+  if (!token) return "";
+  return toHex(await crypto.subtle.digest("SHA-256", enc.encode(token))).slice(0, 16);
+}
+
+async function reportPresence({ force = false } = {}) {
+  const { token, lastPresenceAt } = await chrome.storage.local.get(["token", "lastPresenceAt"]);
+  if (!force && lastPresenceAt && Date.now() - lastPresenceAt < PRESENCE_INTERVAL_MS) return;
+  await chrome.storage.local.set({ lastPresenceAt: Date.now() });
+  try {
+    const resp = await sendNative({ type: "hello", ext_version: EXT_VERSION, token_fp: await tokenFingerprint(token) });
+    if (!resp || !resp.ok) {
+      log("error", `报到失败: ${(resp && resp.error) || "宿主应答无效"}`);
+      return;
+    }
+    if (resp.token_fp && resp.token_fp !== (await tokenFingerprint(token))) {
+      log("info", "本机令牌已变化，重新自动配对");
+      await autoPair({ force: true });
+    }
+  } catch (e) {
+    // 宿主未注册（尚未运行 bridge_setup）时静默：设置页与 Polaris 状态会提示
+    log("error", `报到失败: ${e.message || e}`);
+  }
+}
+
 // 令牌被拒/中继不可信时的统一处理：落盘原因；自动配对来源则重新向宿主取令牌
 async function handleAuthFailure(kind, port, reason) {
   await chrome.storage.local.set({ lastAuthError: { kind, port, reason: reason || "", ts: Date.now() } });
@@ -557,6 +588,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // 首次安装且尚未配对时自动打开设置页
 chrome.runtime.onInstalled.addListener(async (details) => {
+  reportPresence({ force: true });
   if (details.reason === "install") {
     // 先尝试自动配对；宿主未注册时再打开设置页让用户看到原因/手动粘贴
     const token = await autoPair({ force: true });
@@ -569,11 +601,15 @@ chrome.alarms.create("bridge_discovery", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "bridge_discovery") {
     discoverAndConnect();
+    reportPresence();
   }
 });
 
 // 初始化：service worker 重启后内存中的连接已全部失效，先清掉存储里残留的连接状态
+chrome.runtime.onStartup.addListener(() => reportPresence({ force: true }));
+
 updateOptionsStatus().finally(() => {
+  reportPresence();
   discoverAndConnect();
   scheduleReconnect();
 });

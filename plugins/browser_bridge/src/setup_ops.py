@@ -163,6 +163,31 @@ def _wrapper_text(python: str, script: Path) -> str:
     return f'#!/bin/sh\nexec {shlex.quote(python)} {shlex.quote(str(script))} "$@"\n'
 
 
+def host_python() -> str:
+    """宿主解释器取基础解释器而非插件 venv：宿主只用标准库，venv 随插件重装/重建而消失，
+    写死 venv 路径会让自动配对在重装后静默失效。"""
+    base = getattr(sys, "_base_executable", "") or ""
+    return base if base and Path(base).is_file() else sys.executable
+
+
+def _wrapper_python(wrapper: Path) -> str:
+    """从包装脚本里取出解释器路径；解析不了返回空串。"""
+    try:
+        text = wrapper.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("exec "):
+            try:
+                return shlex.split(line)[1]
+            except ValueError, IndexError:
+                return ""
+        if line.startswith('"'):  # Windows .bat
+            return line.split('"')[1]
+    return ""
+
+
 def host_manifest_dict(paths: BridgePaths) -> dict[str, Any]:
     """宿主清单内容；allowed_origins 只含 Polaris Browser Bridge 扩展 ID。"""
     return {
@@ -176,7 +201,7 @@ def host_manifest_dict(paths: BridgePaths) -> dict[str, Any]:
 
 def register_host(paths: BridgePaths, python: str | None = None) -> dict[str, Any]:
     """写宿主脚本、包装脚本，并向 Chrome 注册宿主清单。"""
-    py = python or sys.executable
+    py = python or host_python()
     src = Path(native_host.__file__).resolve()
     _atomic_write(paths.host_script, src.read_bytes(), 0o600)
     _atomic_write(
@@ -227,14 +252,25 @@ def host_info(paths: BridgePaths) -> dict[str, Any]:
     wrapper_ok = wrapper.is_file() and (
         platform.system() == "Windows" or os.access(wrapper, os.X_OK)
     )
+    py = _wrapper_python(wrapper) if wrapper_ok else ""
+    python_ok = bool(py) and Path(py).is_file()
+    try:
+        script_in_sync = _file_sha256(paths.host_script) == _file_sha256(
+            Path(native_host.__file__).resolve()
+        )
+    except OSError:
+        script_in_sync = False
     return {
         "supported": True,
         "registered": bool(
             data.get("name") == NATIVE_HOST_NAME
             and origin_ok
             and wrapper_ok
-            and paths.host_script.is_file()
+            and python_ok
+            and script_in_sync
         ),
+        "python_ok": python_ok,
+        "script_in_sync": script_in_sync,
         "manifest": str(manifest),
         "allowed_origins_ok": origin_ok,
         "wrapper_ok": wrapper_ok,
@@ -287,11 +323,63 @@ def connection_info(paths: BridgePaths, now: float | None = None) -> dict[str, A
                 "%Y-%m-%d %H:%M:%S", time.localtime(float(ts))
             ),
             "ext_version": data.get("ext_version"),
+            "ts": float(ts),
             "age_s": round(age, 1),
             "last_error": data.get("last_error"),
         }
     )
     return info
+
+
+def presence_info(paths: BridgePaths, now: float | None = None) -> dict[str, Any]:
+    """读取扩展报到记录：不依赖中继即可判断扩展是否已在 Chrome 中加载、版本与令牌是否一致。"""
+    t = time.time() if now is None else now
+    info: dict[str, Any] = {
+        "seen": False,
+        "ext_version": None,
+        "token_match": None,
+        "last_seen_at": None,
+        "age_s": None,
+    }
+    try:
+        data = json.loads(paths.presence_file.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return info
+    ts = data.get("ts") if isinstance(data, dict) else None
+    if not isinstance(ts, int | float):
+        return info
+    tm = data.get("token_match")
+    info.update(
+        {
+            "seen": True,
+            "ts": float(ts),
+            "ext_version": data.get("ext_version")
+            if isinstance(data.get("ext_version"), str)
+            else None,
+            "token_match": tm if isinstance(tm, bool) else None,
+            "last_seen_at": time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(float(ts))
+            ),
+            "age_s": round(max(0.0, t - float(ts)), 1),
+        }
+    )
+    return info
+
+
+def _running_extension(st: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Chrome 中正在运行的扩展版本与最近一次证据时间：报到与中继握手取较新者。"""
+    pres, conn = st["presence"], st["connection"]
+    cands: list[tuple[float, str | None, str | None]] = []
+    if pres.get("seen"):
+        cands.append((pres["ts"], pres.get("ext_version"), pres.get("last_seen_at")))
+    if conn.get("last_handshake_at") and conn.get("ts") is not None:
+        cands.append(
+            (conn["ts"], conn.get("ext_version"), conn.get("last_handshake_at"))
+        )
+    if not cands:
+        return None, None
+    _, ver, at = max(cands, key=lambda c: c[0])
+    return ver, at
 
 
 # 新协议（双向 HMAC 握手）扩展的最低版本：低于它的扩展无法与当前中继配对
@@ -315,38 +403,108 @@ def _readiness(st: dict[str, Any]) -> tuple[bool, str]:
 
     ready 表示「一次性设置已完成」，而不是「此刻已连接」：中继只在使用浏览器的插件
     进程运行时存在，若以实时连接为准，插件页会在空闲时误报「需要设置」。
-    判定：本机准备就绪（令牌、扩展目录、自动配对宿主）且扩展曾以新协议成功握手，
-    并且 Chrome 中运行的扩展版本与稳定目录一致（插件升级后需在 Chrome 重新加载）。
+    判定：本机准备就绪（令牌、扩展目录、自动配对宿主）；扩展已在 Chrome 中运行新协议版本
+    （证据取扩展报到与中继握手中较新的一条）且与稳定目录版本一致；扩展持有的令牌与本机一致。
     """
-    conn = st["connection"]
     ext = st["extension"]
     if not st["ok"]:
         return False, "尚未准备扩展：点击「设置」完成一键准备。"
-    paired_ver = _version_tuple(conn.get("ext_version"))
-    if not conn.get("last_handshake_at") or paired_ver < _version_tuple(
-        MIN_PAIRED_EXT_VERSION
-    ):
-        return (
-            False,
-            (
-                "扩展尚未在 Chrome 中加载或仍是旧版本：打开 chrome://extensions，"
-                f"加载已解压的扩展程序并选择 {ext.get('dir')}。"
-            ),
+    ver, at = _running_extension(st)
+    running = _version_tuple(ver)
+    if ver is None or running < _version_tuple(MIN_PAIRED_EXT_VERSION):
+        return False, (
+            "扩展尚未在 Chrome 中加载或仍是旧版本：打开 chrome://extensions，"
+            f"加载已解压的扩展程序并选择 {ext.get('dir')}。"
         )
-    if ext.get("version") and paired_ver < _version_tuple(ext.get("version")):
-        return (
-            False,
-            (
-                f"扩展已更新到 {ext.get('version')}，Chrome 中仍运行 {conn.get('ext_version')}："
-                "请在 chrome://extensions 点击该扩展的「重新加载」。"
-            ),
+    if ext.get("version") and running < _version_tuple(ext.get("version")):
+        return False, (
+            f"扩展已更新到 {ext.get('version')}，Chrome 中仍运行 {ver}："
+            "请在 chrome://extensions 点击该扩展的「重新加载」。"
         )
-    if conn.get("connected"):
-        return True, f"已连接（扩展 {conn.get('ext_version')}）。"
+    if st["presence"].get("token_match") is False:
+        return False, (
+            "扩展持有的令牌与本机不一致：扩展会自动重新配对（最长约 5 分钟）；"
+            "也可在扩展选项页点「重新自动配对」。"
+        )
+    if st["connection"].get("connected"):
+        return True, f"已连接（扩展 {ver}）。"
     return True, (
-        f"设置已完成（扩展 {conn.get('ext_version')}，最近握手 {conn.get('last_handshake_at')}）；"
-        "插件使用浏览器时会自动连接。"
+        f"设置已完成（扩展 {ver}，最近在线 {at}）。浏览器连接会在 browser-use、social "
+        "等插件使用浏览器时自动建立。"
     )
+
+
+def _checks(st: dict[str, Any]) -> list[dict[str, Any]]:
+    """逐项检查清单（Polaris 插件详情页「设置」页按此渲染）。ok=None 表示仅供参考、不影响就绪。"""
+    tok, host, ext, pres, conn = (
+        st["token"],
+        st["host"],
+        st["extension"],
+        st["presence"],
+        st["connection"],
+    )
+    ver, at = _running_extension(st)
+    host_detail = (
+        "已注册"
+        if host.get("registered")
+        else (
+            "不支持（请手动粘贴令牌）"
+            if not host.get("supported")
+            else "解释器已失效，请点「设置」重新注册"
+            if host.get("wrapper_ok") and not host.get("python_ok")
+            else "宿主脚本需要更新，请点「设置」"
+            if host.get("python_ok") and not host.get("script_in_sync")
+            else "未注册，请点「设置」"
+        )
+    )
+    return [
+        {
+            "key": "token",
+            "label": "配对令牌",
+            "ok": bool(tok.get("exists") and tok.get("permissions_ok")),
+            "detail": "已生成（0600）" if tok.get("exists") else "未生成",
+        },
+        {
+            "key": "extension_dir",
+            "label": "扩展目录",
+            "ok": bool(ext.get("ready") and ext.get("in_sync")),
+            "detail": f"{ext.get('dir')}（v{ext.get('version')}）"
+            if ext.get("ready")
+            else "未准备",
+        },
+        {
+            "key": "host",
+            "label": "自动配对宿主",
+            "ok": bool(host.get("registered") or not host.get("supported")),
+            "detail": host_detail,
+        },
+        {
+            "key": "loaded",
+            "label": "Chrome 中的扩展",
+            "ok": ver is not None
+            and _version_tuple(ver)
+            >= _version_tuple(ext.get("version") or MIN_PAIRED_EXT_VERSION),
+            "detail": f"v{ver}，最近在线 {at}" if ver else "尚未加载",
+        },
+        {
+            "key": "token_match",
+            "label": "扩展令牌一致",
+            "ok": pres.get("token_match"),  # None = 扩展尚未报到，仅供参考
+            "detail": {
+                True: "一致",
+                False: "不一致，正在重新配对",
+                None: "未知（扩展尚未报到）",
+            }[pres.get("token_match")],
+        },
+        {
+            "key": "connection",
+            "label": "浏览器连接",
+            "ok": None,
+            "detail": f"已连接（{conn.get('age_s')} 秒前心跳）"
+            if conn.get("connected")
+            else "空闲：browser-use、social 等插件使用浏览器时自动连接",
+        },
+    ]
 
 
 def _next_steps(st: dict[str, Any]) -> list[str]:
@@ -373,6 +531,7 @@ def build_status(paths: BridgePaths, now: float | None = None) -> dict[str, Any]
         "host": host_info(paths),
         "extension": extension_info(paths),
         "connection": connection_info(paths, now),
+        "presence": presence_info(paths, now),
     }
     st["next_steps"] = _next_steps(st)
     st["ok"] = bool(
@@ -381,6 +540,7 @@ def build_status(paths: BridgePaths, now: float | None = None) -> dict[str, Any]
         and (st["host"]["registered"] or not st["host"]["supported"])
     )
     st["ready"], st["message"] = _readiness(st)
+    st["checks"] = _checks(st)
     return st
 
 
@@ -395,6 +555,17 @@ def run_setup(paths: BridgePaths, python: str | None = None) -> dict[str, Any]:
     status = build_status(paths)
     status["setup"] = {"token_created": created, "extension": ext, "host": host}
     return status
+
+
+def refresh_installed(paths: BridgePaths) -> dict[str, Any] | None:
+    """插件进程启动时调用：曾经设置过（令牌已存在）才静默刷新扩展目录与宿主。
+
+    插件重装或升级后扩展源码、宿主脚本、解释器路径都可能变化；此前要用户再点一次「设置」，
+    不点就停在「宿主失效 / 版本不一致」。从未设置过则什么都不做，首次设置仍由用户触发。
+    """
+    if not paths.token_file.exists():
+        return None
+    return {"extension": sync_extension(paths), "host": register_host(paths)}
 
 
 def open_chrome_extensions(paths: BridgePaths) -> dict[str, Any]:
